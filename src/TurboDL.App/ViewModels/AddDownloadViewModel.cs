@@ -45,11 +45,16 @@ public sealed partial class AddDownloadViewModel(DownloadManager manager, Catego
 
     public event Action? CloseRequested;
 
-    /// <summary>Fills in the URL (from the caller, else from the clipboard if it holds a link).</summary>
-    public void Prefill(string? url, IReadOnlyDictionary<string, string>? headers)
+    /// <summary>
+    /// Fills in the URL (from the caller, else from the clipboard if it holds a link). A file name from the caller
+    /// (the browser's pick) is kept as if typed, so neither the URL nor the server's answer replaces it.
+    /// </summary>
+    public void Prefill(string? url, IReadOnlyDictionary<string, string>? headers, string? fileName = null)
     {
         _headers = headers ?? new Dictionary<string, string>();
         Connections = settings.Current.DefaultConnections;
+        if (!string.IsNullOrWhiteSpace(fileName))
+            FileName = FileNames.Sanitize(Path.GetFileName(fileName.Trim())); // marks it edited and picks the category folder
         Url = url ?? ClipboardLink() ?? "";
         if (Url.Length == 0) UpdateFolder();
     }

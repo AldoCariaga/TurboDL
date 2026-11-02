@@ -6,15 +6,16 @@ using TurboDL.App.Views;
 namespace TurboDL.App.Services;
 
 /// <summary>
-/// Opens the Add download window. Called from the toolbar today; the clipboard watcher and the browser
-/// hand-off will call it too, passing their URL and headers.
+/// Opens the Add download window: from the toolbar and tray, the clipboard prompt, and the pipe
+/// (second launches and the browser), which pass their URL, headers and suggested file name.
 /// </summary>
 public sealed class AddDownloadPrompt(IServiceProvider services)
 {
-    public DownloadItemViewModel? Show(string? url = null, IReadOnlyDictionary<string, string>? headers = null)
+    public DownloadItemViewModel? Show(string? url = null, IReadOnlyDictionary<string, string>? headers = null,
+        string? fileName = null)
     {
         var vm = services.GetRequiredService<AddDownloadViewModel>();
-        vm.Prefill(url, headers);
+        vm.Prefill(url, headers, fileName);
 
         var owner = Application.Current.MainWindow;
         var window = new AddDownloadWindow(vm)

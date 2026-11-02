@@ -19,8 +19,8 @@ public partial class MainWindow : FluentWindow
         InitializeComponent();
         Icon = AppIcon.Render(32);
 
-        // The handle exists even while the window stays hidden in the tray, so the clipboard listener,
-        // theme changes and the "show yourself" message all work from startup.
+        // The handle exists even while the window stays hidden in the tray, so the clipboard listener
+        // and theme changes work from startup.
         var handle = new WindowInteropHelper(this).EnsureHandle();
         HwndSource.FromHwnd(handle).AddHook(WndProc);
 
@@ -47,11 +47,6 @@ public partial class MainWindow : FluentWindow
         if (msg == WM_SETTINGCHANGE && lParam != 0)
         {
             TurboTheme.OnSettingChange(System.Runtime.InteropServices.Marshal.PtrToStringUni(lParam));
-        }
-        else if (msg == App.ShowWindowMessage && App.ShowWindowMessage != 0)
-        {
-            WindowService.ShowMain();
-            handled = true;
         }
         return 0;
     }

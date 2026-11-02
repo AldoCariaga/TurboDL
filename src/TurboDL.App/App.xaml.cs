@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -12,6 +11,7 @@ using TurboDL.App.ViewModels;
 using TurboDL.App.Views;
 using TurboDL.Core.Categories;
 using TurboDL.Core.Engine;
+using TurboDL.Core.Ipc;
 using TurboDL.Core.Settings;
 using TurboDL.Core.Storage;
 using Wpf.Ui.Controls;
@@ -22,9 +22,6 @@ namespace TurboDL.App;
 public partial class App : Application
 {
     private const string MutexName = @"Local\TurboDL.SingleInstance";
-
-    /// <summary>Broadcast by a second launch so the running copy shows its window (even from the tray).</summary>
-    public static readonly int ShowWindowMessage = RegisterWindowMessage("TurboDL.ShowWindow");
 
     private IHost? _host;
     private Mutex? _singleInstance;
@@ -44,9 +41,9 @@ public partial class App : Application
         _singleInstance = new Mutex(true, MutexName, out var isFirst);
         if (!isFirst)
         {
-            PostMessage(HWND_BROADCAST, ShowWindowMessage, 0, 0);
             _singleInstance.Dispose();
             _singleInstance = null;
+            ForwardToRunningCopy(e.Args);
             Shutdown();
             return;
         }
@@ -78,6 +75,7 @@ public partial class App : Application
         services.AddSingleton<ClipboardWatcher>();
         services.AddSingleton<WindowService>();
         services.AddSingleton<AddDownloadPrompt>();
+        services.AddSingleton<IpcServer>();
         services.AddTransient<AddDownloadViewModel>();
         services.AddSingleton<MainWindowViewModel>();
         services.AddSingleton<MainWindow>();
@@ -108,12 +106,19 @@ public partial class App : Application
 
         manager.Load();
         queue.Initialize();
+
+        // Second launches and the browser's native host reach this copy through the pipe.
+        var ipc = Get<IpcServer>();
+        ipc.Start();
+        if (FindUrl(e.Args) is { } url)
+            Dispatcher.BeginInvoke(() => ipc.OpenAdd(IpcRequest.Add(url)));
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         if (_host is not null)
         {
+            Get<IpcServer>().Stop();
             Get<DownloadManager>().Shutdown();
             Get<ClipboardWatcher>().Dispose();
             _tray?.Dispose();
@@ -245,6 +250,40 @@ public partial class App : Application
         prompt.Show();
     }
 
+    /// <summary>
+    /// A second launch hands over to the copy already running: a URL argument opens its Add dialog, otherwise its
+    /// window comes to the front. A second <c>--tray</c> launch (sign-in, or the native host starting the app)
+    /// with no URL does nothing, so the window doesn't pop up uninvited.
+    /// </summary>
+    private static void ForwardToRunningCopy(string[] args)
+    {
+        var url = FindUrl(args);
+        if (url is null && args.Contains("--tray")) return;
+        var request = url is null ? IpcRequest.Show() : IpcRequest.Add(url);
+
+        string? problem;
+        try
+        {
+            // Off the UI thread: blocking on async work here would deadlock on the dispatcher.
+            var reply = Task.Run(() => new IpcClient().SendAsync(request)).GetAwaiter().GetResult();
+            problem = reply.Ok ? null : reply.Error ?? "It refused the request.";
+        }
+        catch (Exception ex)
+        {
+            problem = ex is TimeoutException ? "It didn't respond." : ex.GetBaseException().Message;
+        }
+
+        if (problem is null) return;
+        var what = url is null ? "" : $"\n\nThe link wasn't added: {url}";
+        System.Windows.MessageBox.Show($"TurboDL is already running, but couldn't be reached. {problem}{what}", "TurboDL",
+            System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+    }
+
+    /// <summary>The first http(s) link on the command line, if any.</summary>
+    private static string? FindUrl(string[] args) =>
+        args.FirstOrDefault(a => Uri.TryCreate(a.Trim(), UriKind.Absolute, out var uri)
+                                 && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))?.Trim();
+
     private void OnUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         _host?.Services.GetService<ILogger<App>>()?.LogError(e.Exception, "Unhandled UI exception");
@@ -252,12 +291,4 @@ public partial class App : Application
             System.Windows.MessageBoxImage.Error);
         e.Handled = true;
     }
-
-    private const nint HWND_BROADCAST = 0xFFFF;
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int RegisterWindowMessage(string lpString);
-
-    [DllImport("user32.dll")]
-    private static extern bool PostMessage(nint hWnd, int msg, nint wParam, nint lParam);
 }
