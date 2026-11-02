@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>TurboDL</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f9f9f9;
+      --card: #ffffff;
+      --text: #1a1a1a;
+      --muted: #5f5f5f;
+      --line: #e5e5e5;
+      --accent: #0067c0;
+      --accent-text: #ffffff;
+      --switch-off: #8a8a8a;
+      --ok: #0f7b0f;
+      --bad: #c42b1c;
+      --idle: #9d9d9d;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #202020;
+        --card: #2b2b2b;
+        --text: #ffffff;
+        --muted: #c5c5c5;
+        --line: #3a3a3a;
+        --accent: #4cc2ff;
+        --accent-text: #000000;
+        --switch-off: #9a9a9a;
+        --ok: #6ccb5f;
+        --bad: #ff99a4;
+        --idle: #8a8a8a;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      width: 280px;
+      background: var(--bg);
+      color: var(--text);
+      font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px 10px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    header img { width: 18px; height: 18px; }
+    .card {
+      margin: 0 10px 10px;
+      padding: 12px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .label { font-weight: 600; }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    /* Windows 11 style toggle switch */
+    .switch { position: relative; flex: none; width: 40px; height: 20px; }
+    .switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+    .track {
+      position: absolute; inset: 0;
+      border-radius: 10px;
+      border: 1px solid var(--switch-off);
+      background: transparent;
+      transition: background 120ms, border-color 120ms;
+      pointer-events: none;
+    }
+    .track::after {
+      content: "";
+      position: absolute; top: 4px; left: 4px;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--switch-off);
+      transition: transform 120ms, background 120ms;
+    }
+    .switch input:checked + .track { background: var(--accent); border-color: var(--accent); }
+    .switch input:checked + .track::after { transform: translateX(20px); background: var(--accent-text); }
+    .switch input:focus-visible + .track { outline: 2px solid var(--text); outline-offset: 2px; }
+
+    .status { display: flex; align-items: flex-start; gap: 8px; }
+    .dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--idle); }
+    .dot.ok { background: var(--ok); }
+    .dot.bad { background: var(--bad); }
+    .error { color: var(--muted); font-size: 12px; word-break: break-word; }
+    .card.alert { border-color: var(--bad); border-left-width: 3px; }
+    .card.alert .label { color: var(--bad); }
+    [hidden] { display: none !important; }
+    button.link {
+      margin-top: 8px;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--accent);
+      font: inherit;
+      cursor: pointer;
+    }
+    button.link:hover { text-decoration: underline; }
+    button.link:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="icons/icon32.png" alt="">
+    <span>TurboDL</span>
+  </header>
+
+  <div class="card alert" id="menu-error" role="alert" hidden>
+    <div class="label">Couldn't send the link to TurboDL</div>
+    <div class="error" id="menu-error-url"></div>
+    <div class="error" id="menu-error-text"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <div class="label" id="catch-label">Catch downloads</div>
+        <div class="hint" id="catch-hint">Matching downloads open in TurboDL.</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="catching" aria-labelledby="catch-label" aria-describedby="catch-hint">
+        <span class="track"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <div>
+        <div id="host-line">Not checked yet</div>
+        <div class="error" id="host-error" hidden></div>
+        <div class="hint" id="config-line">No settings from TurboDL yet</div>
+      </div>
+    </div>
+    <button class="link" id="check" type="button">Check now</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
