@@ -13,18 +13,23 @@ public static partial class ShellIcons
 {
     private static readonly ConcurrentDictionary<string, ImageSource?> Cache = new(StringComparer.OrdinalIgnoreCase);
 
-    public static ImageSource? ForFile(string? fileName)
+    public static ImageSource? ForFile(string? fileName) => Get(fileName, large: false);
+
+    /// <summary>The 32px icon, for prompts.</summary>
+    public static ImageSource? ForFileLarge(string? fileName) => Get(fileName, large: true);
+
+    private static ImageSource? Get(string? fileName, bool large)
     {
         var ext = Path.GetExtension(fileName ?? "");
         if (ext.Length == 0) ext = ".";
-        return Cache.GetOrAdd(ext, Load);
+        return Cache.GetOrAdd((large ? "L" : "S") + ext, key => Load(key[1..], large));
     }
 
-    private static ImageSource? Load(string ext)
+    private static ImageSource? Load(string ext, bool large)
     {
         var info = new SHFILEINFO();
         var ok = SHGetFileInfo("file" + ext, FILE_ATTRIBUTE_NORMAL, ref info, (uint)Marshal.SizeOf<SHFILEINFO>(),
-            SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES);
+            SHGFI_ICON | (large ? 0 : SHGFI_SMALLICON) | SHGFI_USEFILEATTRIBUTES);
         if (ok == 0 || info.hIcon == 0) return null;
         try
         {
