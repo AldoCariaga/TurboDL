@@ -9,6 +9,9 @@ namespace TurboDL.App.Services;
 /// <summary>Confirmation dialogs, in the Fluent message box style.</summary>
 public sealed class Prompts : IUserPrompts, IDeletePrompt
 {
+    /// <summary>Owned by the main window only while it is on screen; from the tray the dialog stands alone.</summary>
+    private static Window? VisibleMain() => Application.Current.MainWindow is { IsVisible: true } w ? w : null;
+
     public async Task<bool?> ConfirmDeleteAsync(IReadOnlyList<DownloadItemViewModel> items)
     {
         var anyFinished = items.Any(i => i.Status == DownloadStatus.Completed);
@@ -22,7 +25,7 @@ public sealed class Prompts : IUserPrompts, IDeletePrompt
             SecondaryButtonText = anyFinished ? "Delete files too" : "",
             IsSecondaryButtonEnabled = anyFinished,
             CloseButtonText = "Cancel",
-            Owner = Application.Current.MainWindow,
+            Owner = VisibleMain(),
         };
         return await box.ShowDialogAsync() switch
         {
@@ -41,7 +44,7 @@ public sealed class Prompts : IUserPrompts, IDeletePrompt
                       + "Start over to get the new version?",
             PrimaryButtonText = "Start over",
             CloseButtonText = "Not now",
-            Owner = Application.Current.MainWindow,
+            Owner = VisibleMain(),
         };
         return await box.ShowDialogAsync() == MessageBoxResult.Primary;
     }
