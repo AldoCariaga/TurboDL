@@ -50,7 +50,7 @@ public sealed class VideoJobTests : IDisposable
 
         var run = FakeToolsFolder.ReadLog(log);
         Assert.DoesNotContain("--continue", run.Args);
-        Assert.Contains("res:1080,ext:mp4:m4a", run.Args);
+        Assert.Contains("res:1080,vcodec:h264,acodec:aac,ext:mp4:m4a", run.Args);
         // The name chosen in the dialog, not yt-dlp's title template.
         Assert.Contains("Fäke vidéo ✓.%(ext)s", run.Args);
         Assert.DoesNotContain(run.Args, a => a.Contains("s3cret", StringComparison.Ordinal));

@@ -333,11 +333,12 @@ public sealed class YtDlpArgumentsTests
     {
         var best = Download();
         Assert.Equal("bv*+ba/b", After(best, "-f"));
-        Assert.Equal("res,ext:mp4:m4a", After(best, "-S"));
+        Assert.Equal("vcodec:h264,res,acodec:aac,ext:mp4:m4a", After(best, "-S"));
         Assert.Equal("mp4", After(best, "--merge-output-format"));
         Assert.Equal("mp4", After(best, "--remux-video"));
 
-        Assert.Equal("res:1080,ext:mp4:m4a", After(Download(VideoQuality.Max1080), "-S"));
+        Assert.Equal("res:1080,vcodec:h264,acodec:aac,ext:mp4:m4a", After(Download(VideoQuality.Max1080), "-S"));
+        Assert.Equal("res:720,vcodec:h264,acodec:aac,ext:mp4:m4a", After(Download(VideoQuality.Max720), "-S"));
         Assert.Equal("res:720", After(Download(VideoQuality.Max720, VideoContainer.Mkv), "-S"));
         Assert.Null(After(Download(VideoQuality.Best, VideoContainer.Mkv), "-S"));
         Assert.Equal("mkv", After(Download(VideoQuality.Best, VideoContainer.Mkv), "--merge-output-format"));
@@ -346,6 +347,30 @@ public sealed class YtDlpArgumentsTests
         Assert.Equal("ba/b", After(audio, "-f"));
         Assert.Contains("-x", audio);
         Assert.DoesNotContain("--merge-output-format", audio);
+        Assert.Equal("acodec:aac,ext:mp4:m4a", After(audio, "-S"));
+        Assert.Null(After(Download(VideoQuality.AudioOnly, VideoContainer.Mkv), "-S"));
+    }
+
+    [Fact]
+    public void Mp4_PrefersH264_WithoutGivingUpResolution()
+    {
+        // Picked on a YouTube test video by yt-dlp 2026.10.26 (--simulate): 1080 → 299 avc1 (was 399 av01), and with every
+        // H.264 format removed, 1080 → 617 vp9 at 1080p, i.e. the capped presets never drop the height.
+        foreach (var q in new[] { VideoQuality.Max1080, VideoQuality.Max720 })
+        {
+            var sort = After(Download(q), "-S")!.Split(',');
+            Assert.StartsWith("res", sort[0]);
+            Assert.Equal(["vcodec:h264", "acodec:aac", "ext:mp4:m4a"], sort[1..]);
+        }
+        Assert.Equal("res:720", After(Download(VideoQuality.Max720, VideoContainer.Mkv), "-S"));
+    }
+
+    [Fact]
+    public void BestMp4_PutsH264First_MkvKeepsTheBestCodec()
+    {
+        // On the same test video: → 299+140 (H.264 1080p60 + AAC) instead of 623 (VP9 1440p).
+        Assert.Equal("vcodec:h264,res,acodec:aac,ext:mp4:m4a", After(Download(VideoQuality.Best), "-S"));
+        Assert.Null(After(Download(VideoQuality.Best, VideoContainer.Mkv), "-S"));
     }
 
     [Fact]

@@ -24,6 +24,12 @@ public static class YtDlpArguments
 
     public const string FilePrintTemplate = "after_move:" + FilePrefix + "%(filepath)s";
 
+    /// <summary>
+    /// mp4 means "plays everywhere": after the resolution, prefer H.264 video and AAC audio in mp4/m4a.
+    /// These are preferences, not filters, so a height with no H.264 still downloads in the best other codec.
+    /// </summary>
+    public const string Mp4Preference = "vcodec:h264,acodec:aac,ext:mp4:m4a";
+
     /// <summary>Default file name: the title, capped at 150 bytes so long titles stay under Windows' path limits.</summary>
     public const string TitleTemplate = "%(title).150B.%(ext)s";
 
@@ -93,9 +99,9 @@ public static class YtDlpArguments
 
         if (request.Quality == VideoQuality.AudioOnly)
         {
-            // Best audio stream as-is (no re-encode); mp4 prefers m4a.
+            // Best audio stream as-is (no re-encode); mp4 prefers AAC in m4a.
             args.AddRange(["-f", "ba/b", "-x"]);
-            if (mp4) args.AddRange(["-S", "ext:mp4:m4a"]);
+            if (mp4) args.AddRange(["-S", "acodec:aac,ext:mp4:m4a"]);
             return;
         }
 
@@ -107,7 +113,10 @@ public static class YtDlpArguments
             VideoQuality.Max720 => "res:720",
             _ => null,
         };
-        if (mp4) sort = sort is null ? "res,ext:mp4:m4a" : sort + ",ext:mp4:m4a";
+        // The capped presets put resolution first, so the codec preference never costs height. Best + mp4 puts H.264
+        // first: mp4 always means plays-everywhere (YouTube tops out at 1080p for H.264); mkv keeps yt-dlp's
+        // own best-codec order for anyone who wants 1440p/4K.
+        if (mp4) sort = sort is null ? "vcodec:h264,res,acodec:aac,ext:mp4:m4a" : sort + "," + Mp4Preference;
         if (sort is not null) args.AddRange(["-S", sort]);
         args.AddRange(["--merge-output-format", container, "--remux-video", container]);
     }
