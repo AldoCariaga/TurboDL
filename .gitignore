@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# TurboDL: scripts/publish.ps1 output
+dist/

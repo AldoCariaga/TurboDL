@@ -1,0 +1,12 @@
+<Project>
+
+  <!--
+    One version for everything under src (the app, the native host and Core). scripts\publish.ps1 adds the git
+    short hash, so the published exes' product version reads e.g. 0.6.0+7af5209.
+  -->
+  <PropertyGroup>
+    <Version>0.6.0</Version>
+    <Product>TurboDL</Product>
+  </PropertyGroup>
+
+</Project>
