@@ -122,13 +122,15 @@
                         </Button>
                         <Rectangle DockPanel.Dock="Left" Width="1" Height="20" Margin="10,0"
                                    Fill="{DynamicResource DividerStrokeColorDefaultBrush}" />
-                        <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}" Margin="0" Command="{Binding StartQueueCommand}" ToolTip="Start every queued download" AutomationProperties.Name="Start queue">
+                        <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}" Margin="0" Command="{Binding ToggleQueueCommand}"
+                                ToolTip="Download what's queued, a few at a time (set how many in Settings)">
                             <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="TextBulletListLtr24" FontSize="16" Margin="0,0,8,0" />
-                                <TextBlock Text="Start queue" VerticalAlignment="Center" />
+                                <ui:SymbolIcon x:Name="QueueIcon" Symbol="TextBulletListLtr24" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock x:Name="QueueLabel" Text="Start queue" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0" IsEnabled="False" ToolTip="Settings" AutomationProperties.Name="Settings">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0" Command="{Binding OpenSettingsCommand}"
+                                ToolTip="Settings" AutomationProperties.Name="Settings">
                             <ui:SymbolIcon Symbol="Settings24" FontSize="16" />
                         </Button>
                     </DockPanel>
@@ -164,12 +166,14 @@
                               AutomationProperties.Name="Downloads">
                         <ListView.InputBindings>
                             <KeyBinding Key="Delete" Command="{Binding DeleteCommand}" />
-                            <KeyBinding Key="Enter" Command="{Binding OpenCommand}"
+                            <KeyBinding Key="Enter" Command="{Binding ActivateCommand}"
                                         CommandParameter="{Binding SelectedItem, ElementName=List}" />
                         </ListView.InputBindings>
                         <ListView.ContextMenu>
                             <ContextMenu>
                                 <ui:MenuItem Header="Open" Command="{Binding OpenCommand}" Icon="{ui:SymbolIcon Open24}"
+                                             CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                <ui:MenuItem Header="Details" Command="{Binding ShowDetailsCommand}" Icon="{ui:SymbolIcon Info24}"
                                              CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                                 <ui:MenuItem Header="Show in folder" Command="{Binding ShowInFolderCommand}" Icon="{ui:SymbolIcon FolderOpen24}"
                                              CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
@@ -257,6 +261,8 @@
                     <DockPanel Grid.Row="3" Margin="24,6,28,10">
                         <TextBlock DockPanel.Dock="Right" Text="{Binding TotalSpeed}" Style="{StaticResource NumberText}"
                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold" />
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding SpeedLimitText}" Style="{StaticResource CaptionText}"
+                                   Margin="0,0,16,0" />
                         <TextBlock Text="{Binding StatusLine}" Style="{StaticResource CaptionText}" />
                     </DockPanel>
                 </Grid>

@@ -1,8 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
+using TurboDL.App.Services;
 using TurboDL.App.ViewModels;
-using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
 
 namespace TurboDL.App.Views;
@@ -16,14 +17,43 @@ public partial class MainWindow : FluentWindow
         _vm = vm;
         DataContext = vm;
         InitializeComponent();
+        Icon = AppIcon.Render(32);
 
-        // Follow Windows light/dark live; keep TurboDL's own accent (see TurboTheme).
-        Loaded += (_, _) =>
+        // The handle exists even while the window stays hidden in the tray, so the clipboard listener,
+        // theme changes and the "show yourself" message all work from startup.
+        var handle = new WindowInteropHelper(this).EnsureHandle();
+        HwndSource.FromHwnd(handle).AddHook(WndProc);
+
+        vm.Queue.PropertyChanged += (_, e) =>
         {
-            SystemThemeWatcher.Watch(this, WindowBackdropType.Mica, updateAccents: false);
-            _vm.Start();
+            if (e.PropertyName == nameof(QueueService.IsRunning)) UpdateQueueButton();
         };
-        Closed += (_, _) => _vm.Stop();
+        UpdateQueueButton();
+        vm.Start();
+        Closed += (_, _) => vm.Stop();
+    }
+
+    private void UpdateQueueButton()
+    {
+        var running = _vm.Queue.IsRunning;
+        QueueLabel.Text = running ? "Stop queue" : "Start queue";
+        QueueIcon.Symbol = running ? SymbolRegular.Stop24 : SymbolRegular.TextBulletListLtr24;
+    }
+
+    private const int WM_SETTINGCHANGE = 0x001A;
+
+    private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
+    {
+        if (msg == WM_SETTINGCHANGE && lParam != 0)
+        {
+            TurboTheme.OnSettingChange(System.Runtime.InteropServices.Marshal.PtrToStringUni(lParam));
+        }
+        else if (msg == App.ShowWindowMessage && App.ShowWindowMessage != 0)
+        {
+            WindowService.ShowMain();
+            handled = true;
+        }
+        return 0;
     }
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
@@ -34,7 +64,7 @@ public partial class MainWindow : FluentWindow
         if (e.OriginalSource is DependencyObject source
             && ItemsControl.ContainerFromElement(List, source) is System.Windows.Controls.ListViewItem { DataContext: DownloadItemViewModel item })
         {
-            _vm.OpenCommand.Execute(item);
+            _vm.ActivateCommand.Execute(item);
         }
     }
 }
