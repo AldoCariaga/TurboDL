@@ -1,0 +1,182 @@
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Net.Http;
+using Microsoft.Extensions.Logging;
+using TurboDL.Core.Engine;
+using TurboDL.Core.Model;
+using TurboDL.Core.Storage;
+using TurboDL.App.ViewModels;
+
+namespace TurboDL.App.Services;
+
+/// <summary>Asks the user things the engine can't decide alone.</summary>
+public interface IUserPrompts
+{
+    /// <summary>The server's copy changed since the download began. True = throw away the partial file and start over.</summary>
+    Task<bool> ConfirmRestartAsync(string fileName);
+}
+
+/// <summary>
+/// Owns every download: the list, the running tasks, the shared <see cref="HttpClient"/> and the store.
+/// All public members are called on the UI thread.
+/// </summary>
+public sealed class DownloadManager(
+    HttpClient http,
+    RateLimiter globalLimiter,
+    DownloadStore store,
+    IUserPrompts prompts,
+    ILogger<DownloadManager> log)
+{
+    public ObservableCollection<DownloadItemViewModel> Items { get; } = [];
+
+    public HttpClient Http => http;
+
+    /// <summary>Raised on the UI thread when a download finishes. Hook for the tray toast.</summary>
+    public event Action<DownloadItemViewModel>? Completed;
+
+    /// <summary>
+    /// Loads the saved list. Anything still marked Downloading was running when the app last closed (or crashed),
+    /// so it starts again.
+    /// </summary>
+    public void Load()
+    {
+        var resume = new List<DownloadItemViewModel>();
+        foreach (var info in store.LoadAll())
+        {
+            var item = new DownloadItemViewModel(info);
+            Items.Add(item);
+            if (info.Status == DownloadStatus.Downloading) resume.Add(item);
+        }
+        foreach (var item in resume) Start(item);
+    }
+
+    public DownloadItemViewModel Add(DownloadInfo info, bool startNow)
+    {
+        info.Status = DownloadStatus.Queued;
+        store.Add(info);
+        var item = new DownloadItemViewModel(info);
+        Items.Add(item);
+        if (startNow) Start(item);
+        return item;
+    }
+
+    /// <summary>Starts or resumes. Resuming is a new task over the same info; the engine picks up from the saved segments.</summary>
+    public void Start(DownloadItemViewModel item)
+    {
+        if (item.IsRunning || item.Info.Status == DownloadStatus.Completed) return;
+        item.Run = RunAsync(item);
+    }
+
+    public void Pause(DownloadItemViewModel item) => item.Cts?.Cancel();
+
+    /// <summary>
+    /// Starts everything waiting in the queue. The queue manager will replace this with "N at a time" plus the scheduler.
+    /// </summary>
+    public void StartQueue()
+    {
+        foreach (var item in Items.Where(i => i.Status == DownloadStatus.Queued).ToList())
+            Start(item);
+    }
+
+    /// <summary>Removes downloads from the list. Partial files always go; finished files go to the Recycle Bin when asked.</summary>
+    public async Task DeleteAsync(IReadOnlyList<DownloadItemViewModel> items, bool deleteFiles)
+    {
+        foreach (var item in items) Pause(item);
+        await Task.WhenAll(items.Select(i => i.Run ?? Task.CompletedTask));
+
+        foreach (var item in items)
+        {
+            store.Delete(item.Info.Id);
+            Items.Remove(item);
+            TryDelete(item.Info.TempPath, recycle: false);
+            if (deleteFiles && item.Info.Status == DownloadStatus.Completed && !string.IsNullOrEmpty(item.Info.FileName))
+                TryDelete(item.Info.FilePath, recycle: true);
+        }
+    }
+
+    /// <summary>
+    /// Pauses everything and saves it. Downloads that were running keep the Downloading status in the database,
+    /// which is how <see cref="Load"/> knows to resume them next time.
+    /// </summary>
+    public void Shutdown()
+    {
+        var running = Items.Where(i => i.IsRunning).ToList();
+        foreach (var item in running) Pause(item);
+
+        // Wait for the engine tasks themselves (thread pool), not RunAsync, whose continuations need this thread.
+        var engineTasks = running.Select(i => i.EngineRun).OfType<Task>().ToArray();
+        try { Task.WaitAll(engineTasks, TimeSpan.FromSeconds(5)); }
+        catch (AggregateException) { /* paused or failed: both already checkpointed */ }
+
+        foreach (var item in running.Where(i => i.Info.Status == DownloadStatus.Paused))
+        {
+            item.Info.Status = DownloadStatus.Downloading;
+            store.Save(item.Info);
+        }
+    }
+
+    private async Task RunAsync(DownloadItemViewModel item)
+    {
+        var info = item.Info;
+        var task = new DownloadTask(info, http, globalLimiter: globalLimiter);
+        task.Checkpoint += store.Save; // background thread; Save is thread-safe
+        task.Log += message => log.LogDebug("[{Id}] {Message}", info.Id, message);
+
+        var cts = new CancellationTokenSource();
+        // Off the UI thread: the engine doesn't use ConfigureAwait(false), so its I/O would otherwise run here.
+        var engineRun = Task.Run(() => task.RunAsync(cts.Token));
+        item.Attach(task, cts, engineRun);
+
+        Exception? error = null;
+        try
+        {
+            await engineRun;
+        }
+        catch (OperationCanceledException)
+        {
+            // Paused. The engine already saved the Paused state.
+        }
+        catch (Exception ex)
+        {
+            error = ex;
+            log.LogWarning(ex, "Download {Id} failed", info.Id);
+        }
+        finally
+        {
+            task.Checkpoint -= store.Save;
+            item.Detach();
+        }
+
+        if (info.Status == DownloadStatus.Completed)
+            Completed?.Invoke(item);
+        else if (error is RemoteFileChangedException && await prompts.ConfirmRestartAsync(info.FileName))
+        {
+            TryDelete(info.TempPath, recycle: false);
+            info.Segments = [];
+            info.TotalSize = null;
+            info.ETag = null;
+            info.LastModified = null;
+            info.Error = null;
+            store.Save(info);
+            Start(item);
+        }
+    }
+
+    private void TryDelete(string path, bool recycle)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            if (recycle)
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            else
+                File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Couldn't delete {Path}", path);
+        }
+    }
+}
