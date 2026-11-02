@@ -25,16 +25,76 @@
                         AutomationProperties.Name="Link" />
 
             <!-- Fixed height so the form doesn't jump while the link is being checked. -->
-            <DockPanel Height="32" Margin="0,4,0,8">
+            <!-- At least one line high so the form doesn't jump; yt-dlp's messages may need more. -->
+            <DockPanel MinHeight="32" Margin="0,4,0,8">
                 <ui:ProgressRing DockPanel.Dock="Left" Width="14" Height="14" IsIndeterminate="True" Margin="0,0,8,0"
                                  Visibility="{Binding IsChecking, Converter={StaticResource BoolToVisibility}}" />
                 <TextBlock x:Name="NoteText" Text="{Binding Note}" Style="{StaticResource CaptionText}"
                            TextWrapping="Wrap" TextTrimming="None" VerticalAlignment="Top" Margin="0,2,0,0" />
             </DockPanel>
 
+            <!-- First use of video support: yt-dlp, ffmpeg and Deno download on their own, with Cancel. -->
+            <Border Visibility="{Binding IsSettingUpTools, Converter={StaticResource BoolToVisibility}}"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6"
+                    Padding="16,12" Margin="0,0,0,16">
+                <DockPanel>
+                    <ui:Button DockPanel.Dock="Right" Content="Cancel" Command="{Binding CancelToolsCommand}"
+                               VerticalAlignment="Center" Margin="16,0,0,0" />
+                    <StackPanel>
+                        <TextBlock Text="{Binding ToolsText}" Style="{StaticResource BodyText}" TextWrapping="Wrap"
+                                   TextTrimming="None" Typography.NumeralAlignment="Tabular" />
+                        <ProgressBar Margin="0,10,0,0" Height="4" Minimum="0" Maximum="1" Value="{Binding ToolsFraction, Mode=OneWay}"
+                                     IsIndeterminate="{Binding ToolsIndeterminate}"
+                                     AutomationProperties.Name="Video support setup progress" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Video mode: what yt-dlp found. -->
+            <Grid Visibility="{Binding IsVideoMode, Converter={StaticResource BoolToVisibility}}" Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="160" Height="90" CornerRadius="6" ClipToBounds="True"
+                        Background="{DynamicResource ControlFillColorSecondaryBrush}" Margin="0,0,16,0">
+                    <Image Source="{Binding Thumbnail, TargetNullValue={x:Null}, FallbackValue={x:Null}}" Stretch="UniformToFill"
+                           RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="Video thumbnail" />
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding VideoTitle}" Style="{StaticResource BodyText}" FontWeight="SemiBold"
+                               TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="40" ToolTip="{Binding VideoTitle}" />
+                    <TextBlock Text="{Binding VideoMeta}" Style="{StaticResource CaptionText}" Margin="0,4,0,0" />
+                </StackPanel>
+            </Grid>
+
             <TextBlock Text="File name" Style="{StaticResource FieldLabel}" />
             <ui:TextBox Text="{Binding FileName, UpdateSourceTrigger=PropertyChanged}"
                         PlaceholderText="Taken from the server" AutomationProperties.Name="File name" />
+
+            <StackPanel Visibility="{Binding IsVideoMode, Converter={StaticResource BoolToVisibility}}">
+                <Grid Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Quality" Style="{StaticResource FieldLabel}" />
+                        <ComboBox ItemsSource="{Binding Qualities}" SelectedItem="{Binding SelectedQuality}"
+                                  AutomationProperties.Name="Quality" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0" Width="120"
+                                Visibility="{Binding ShowContainer, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="Container" Style="{StaticResource FieldLabel}" />
+                        <ComboBox ItemsSource="{Binding Containers}" SelectedItem="{Binding SelectedContainer}"
+                                  AutomationProperties.Name="Container" />
+                    </StackPanel>
+                </Grid>
+                <ListBox ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" Height="168" Margin="0,8,0,0"
+                         Visibility="{Binding ShowFormats, Converter={StaticResource BoolToVisibility}}"
+                         Typography.NumeralAlignment="Tabular" AutomationProperties.Name="Formats" />
+            </StackPanel>
 
             <TextBlock Text="Save to" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
             <Grid>
@@ -47,6 +107,7 @@
                            VerticalAlignment="Stretch" />
             </Grid>
 
+            <StackPanel Visibility="{Binding IsVideoMode, Converter={StaticResource InverseBoolToVisibility}}">
             <TextBlock Text="Connections" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
             <StackPanel Orientation="Horizontal">
                 <ui:NumberBox Value="{Binding Connections, UpdateSourceTrigger=PropertyChanged}" Minimum="1" Maximum="32"
@@ -54,6 +115,7 @@
                               ClearButtonEnabled="False" AutomationProperties.Name="Connections" />
                 <TextBlock Text="Parts downloaded at the same time, 1 to 32" Style="{StaticResource CaptionText}"
                            Margin="12,0,0,0" />
+            </StackPanel>
             </StackPanel>
         </StackPanel>
 

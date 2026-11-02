@@ -16,7 +16,8 @@ public static class YtDlpArguments
         "download:" + ProgressPrefix +
         "{\"status\":%(progress.status)j,\"downloaded\":%(progress.downloaded_bytes)j,\"total\":%(progress.total_bytes)j," +
         "\"estimate\":%(progress.total_bytes_estimate)j,\"speed\":%(progress.speed)j,\"eta\":%(progress.eta)j," +
-        "\"format\":%(info.format_id)j,\"vcodec\":%(info.vcodec)j,\"acodec\":%(info.acodec)j}";
+        "\"format\":%(info.format_id)j,\"vcodec\":%(info.vcodec)j,\"acodec\":%(info.acodec)j," +
+        "\"file\":%(progress.filename)j,\"tmp\":%(progress.tmpfilename)j}";
 
     public const string PostProcessTemplate =
         "postprocess:" + PostProcessPrefix + """{"status":%(progress.status)j,"pp":%(progress.postprocessor)j}""";
@@ -84,7 +85,9 @@ public static class YtDlpArguments
         if (request.FormatIds is { Count: > 0 } ids)
         {
             args.AddRange(["-f", string.Join('+', ids)]);
-            args.AddRange(["--merge-output-format", container, "--remux-video", container]);
+            // An audio format picked by hand is kept as audio, not wrapped in a video container.
+            if (request.Quality == VideoQuality.AudioOnly) args.Add("-x");
+            else args.AddRange(["--merge-output-format", container, "--remux-video", container]);
             return;
         }
 

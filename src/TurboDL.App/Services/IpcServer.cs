@@ -7,8 +7,8 @@ namespace TurboDL.App.Services;
 
 /// <summary>
 /// Serves this user's <c>TurboDL.Ipc.&lt;SID&gt;</c> pipe: second launches and the browser's native host send
-/// <c>add</c>, <c>show</c> and <c>getConfig</c> here. Requests run on the UI thread; <c>add</c> replies at once
-/// and opens the Add dialog afterwards, so the caller never waits on the user.
+/// <c>add</c>, <c>addVideo</c>, <c>show</c> and <c>getConfig</c> here. Requests run on the UI thread; <c>add</c> and
+/// <c>addVideo</c> reply at once and open the Add dialog afterwards, so the caller never waits on the user.
 /// </summary>
 public sealed class IpcServer(AddDownloadPrompt addPrompt, SettingsService settings, ILogger<IpcServer> log)
 {
@@ -50,6 +50,13 @@ public sealed class IpcServer(AddDownloadPrompt addPrompt, SettingsService setti
         addPrompt.Show(request.Url, request.BrowserHeaders(), request.Filename);
     }
 
+    /// <summary>Opens the Add dialog in video mode from an <c>addVideo</c> request (the browser's video menu).</summary>
+    public void OpenAddVideo(IpcRequest request)
+    {
+        WindowService.ShowMain();
+        addPrompt.ShowVideo(request.Url!, request.PageUrl, request.BrowserHeaders());
+    }
+
     private Task<IpcReply> HandleAsync(IpcRequest request, CancellationToken ct)
     {
         var dispatcher = Application.Current?.Dispatcher;
@@ -65,6 +72,9 @@ public sealed class IpcServer(AddDownloadPrompt addPrompt, SettingsService setti
             case IpcCommands.Add:
                 // Queued behind this reply: the dialog is modal and the caller must not wait for the user.
                 dispatcher.BeginInvoke(() => OpenAdd(request));
+                return IpcReply.Success();
+            case IpcCommands.AddVideo:
+                dispatcher.BeginInvoke(() => OpenAddVideo(request));
                 return IpcReply.Success();
             case IpcCommands.Show:
                 WindowService.ShowMain();

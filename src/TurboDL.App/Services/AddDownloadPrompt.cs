@@ -16,7 +16,19 @@ public sealed class AddDownloadPrompt(IServiceProvider services)
     {
         var vm = services.GetRequiredService<AddDownloadViewModel>();
         vm.Prefill(url, headers, fileName);
+        return ShowDialog(vm);
+    }
 
+    /// <summary>Opens straight into video mode: <paramref name="url"/> is tried with yt-dlp, then <paramref name="pageUrl"/>.</summary>
+    public DownloadItemViewModel? ShowVideo(string url, string? pageUrl, IReadOnlyDictionary<string, string>? headers)
+    {
+        var vm = services.GetRequiredService<AddDownloadViewModel>();
+        vm.PrefillVideo(url, pageUrl, headers);
+        return ShowDialog(vm);
+    }
+
+    private DownloadItemViewModel? ShowDialog(AddDownloadViewModel vm)
+    {
         var owner = Application.Current.MainWindow;
         var window = new AddDownloadWindow(vm)
         {

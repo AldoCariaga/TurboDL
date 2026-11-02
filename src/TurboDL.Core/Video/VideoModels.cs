@@ -5,7 +5,9 @@ public sealed class VideoInfo
 {
     public required string Id { get; init; }
     public required string Title { get; init; }
+    /// <summary>A thumbnail URL, preferring JPEG/PNG over WebP (which WPF can't show).</summary>
     public string? Thumbnail { get; init; }
+
     public TimeSpan? Duration { get; init; }
 
     /// <summary>yt-dlp's extractor name, e.g. "youtube" or "generic".</summary>
@@ -128,7 +130,10 @@ public sealed class VideoDownloadRequest
 
     public VideoQuality Quality { get; init; } = VideoQuality.Best;
 
-    /// <summary>Explicit yt-dlp format ids (e.g. ["137", "140"], merged in that order). Overrides <see cref="Quality"/>.</summary>
+    /// <summary>
+    /// Explicit yt-dlp formats (e.g. ["137", "140"], or ["137", "ba"] for the best audio), merged in that order.
+    /// They replace the preset's choice; with <see cref="VideoQuality.AudioOnly"/> the result is kept as audio.
+    /// </summary>
     public IReadOnlyList<string>? FormatIds { get; init; }
 
     /// <summary>The container video is merged/remuxed into. Ignored for <see cref="VideoQuality.AudioOnly"/>, except that mp4 prefers m4a audio.</summary>
@@ -178,6 +183,12 @@ public sealed record VideoProgress
 
     /// <summary>The post-processor yt-dlp is running, e.g. "Merger" (merging and processing phases only).</summary>
     public string? PostProcessor { get; init; }
+
+    /// <summary>The file this stream is being written to (e.g. "Title.f137.mp4"), when yt-dlp says.</summary>
+    public string? FileName { get; init; }
+
+    /// <summary>The partial file while it downloads (e.g. "Title.f137.mp4.part"), when yt-dlp says.</summary>
+    public string? TempFileName { get; init; }
 }
 
 public sealed record VideoDownloadResult(string FilePath);

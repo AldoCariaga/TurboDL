@@ -351,9 +351,17 @@ public sealed class YtDlpArgumentsTests
     [Fact]
     public void ExplicitFormatIds_WinOverThePreset()
     {
-        var args = Download(VideoQuality.AudioOnly, ids: ["137", "140"]);
-        Assert.Equal("137+140", After(args, "-f"));
+        var args = Download(VideoQuality.Max720, VideoContainer.Mkv, ids: ["137", "ba"]);
+        Assert.Equal("137+ba", After(args, "-f"));
+        Assert.Null(After(args, "-S"));
+        Assert.Equal("mkv", After(args, "--merge-output-format"));
         Assert.DoesNotContain("-x", args);
+
+        // A hand-picked audio format stays audio.
+        var audio = Download(VideoQuality.AudioOnly, ids: ["140"]);
+        Assert.Equal("140", After(audio, "-f"));
+        Assert.Contains("-x", audio);
+        Assert.DoesNotContain("--remux-video", audio);
     }
 
     [Fact]

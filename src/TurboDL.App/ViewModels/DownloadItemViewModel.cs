@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using TurboDL.App.Services;
 using TurboDL.Core.Engine;
 using TurboDL.Core.Model;
+using TurboDL.Core.Video;
 
 namespace TurboDL.App.ViewModels;
 
@@ -15,6 +16,12 @@ public sealed partial class DownloadItemViewModel : ObservableObject
     public DownloadInfo Info { get; }
 
     internal DownloadTask? Task { get; private set; }
+
+    /// <summary>The running yt-dlp job, for <see cref="DownloadKind.Video"/> items.</summary>
+    internal VideoJob? VideoJob { get; private set; }
+
+    /// <summary>Set to stop the running video job and start it again straight away (e.g. a new speed limit).</summary>
+    internal bool RestartRequested { get; set; }
     internal CancellationTokenSource? Cts { get; private set; }
     /// <summary>The engine's own task (thread pool). Safe to block on during shutdown.</summary>
     internal Task? EngineRun { get; private set; }
@@ -52,7 +59,11 @@ public sealed partial class DownloadItemViewModel : ObservableObject
         while (Log.Count > 200) Log.RemoveAt(0);
     }
 
-    public bool IsRunning => Task is not null;
+    public bool IsRunning => Task is not null || VideoJob is not null;
+    public bool IsVideo => Info.Kind == DownloadKind.Video;
+
+    /// <summary>Video items: what was asked for, e.g. "Up to 1080p · mp4".</summary>
+    public string VideoDescription => Info.Video?.Describe() ?? "";
     public bool CanResume => !IsRunning && Status is DownloadStatus.Paused or DownloadStatus.Failed or DownloadStatus.Queued;
     public bool CanPause => IsRunning;
 
@@ -64,9 +75,18 @@ public sealed partial class DownloadItemViewModel : ObservableObject
         Refresh();
     }
 
+    internal void AttachVideo(VideoJob job, CancellationTokenSource cts, Task engineRun)
+    {
+        VideoJob = job;
+        Cts = cts;
+        EngineRun = engineRun;
+        Refresh();
+    }
+
     internal void Detach()
     {
         Task = null;
+        VideoJob = null;
         Cts?.Dispose();
         Cts = null;
         EngineRun = null;
@@ -76,6 +96,12 @@ public sealed partial class DownloadItemViewModel : ObservableObject
     /// <summary>Pull the latest numbers from the running task (or from the saved info when idle).</summary>
     public void Refresh()
     {
+        if (IsVideo)
+        {
+            RefreshVideo();
+            return;
+        }
+
         var task = Task;
         var snap = task?.GetSnapshot();
 
@@ -116,8 +142,59 @@ public sealed partial class DownloadItemViewModel : ObservableObject
             _ => "",
         };
 
+        RaiseStateChanged();
+    }
+
+    private void RefreshVideo()
+    {
+        var job = VideoJob;
+        var snap = job?.GetSnapshot();
+        Status = job is not null && Info.Status is not (DownloadStatus.Completed or DownloadStatus.Failed)
+            ? DownloadStatus.Downloading
+            : Info.Status;
+
+        if (Name != Info.FileName || Icon is null)
+        {
+            Name = string.IsNullOrEmpty(Info.FileName) ? Info.Video?.Title ?? Info.Url : Info.FileName;
+            Icon = ShellIcons.ForFile(string.IsNullOrEmpty(Info.FileName) ? "video.mp4" : Info.FileName);
+        }
+        Category = Info.Category;
+        Error = Info.Error;
+        Segments = null;
+
+        var total = snap?.Total ?? Info.TotalSize;
+        var downloaded = snap?.Downloaded ?? Info.Downloaded;
+        Total = total;
+        SizeText = total is not null
+            ? (snap?.TotalIsEstimate == true ? "~" : "") + Format.Bytes(total)
+            : downloaded > 0 ? Format.Bytes(downloaded) : Format.None;
+        Fraction = Status == DownloadStatus.Completed ? 1 : total is > 0 ? Math.Clamp((double)downloaded / total.Value, 0, 1) : 0;
+        PercentText = Status == DownloadStatus.Completed || total is > 0 ? $"{Math.Floor(Fraction * 100):0}%" : "";
+
+        BytesPerSecond = Status == DownloadStatus.Downloading ? snap?.BytesPerSecond ?? 0 : 0;
+        SpeedText = Format.Speed(BytesPerSecond);
+        RemainingText = Status == DownloadStatus.Downloading ? Format.Duration(snap?.Remaining) : Format.None;
+
+        StatusText = Status switch
+        {
+            DownloadStatus.Downloading => snap?.PhaseText is { } phase
+                ? phase is "Merging" or "Processing" or "Starting" ? phase + "…" : phase
+                : "Starting…",
+            DownloadStatus.Paused => "Paused",
+            DownloadStatus.Queued => "Queued",
+            DownloadStatus.Completed => "Completed",
+            DownloadStatus.Failed => "Failed",
+            _ => "",
+        };
+
+        RaiseStateChanged();
+    }
+
+    private void RaiseStateChanged()
+    {
         OnPropertyChanged(nameof(IsRunning));
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanPause));
+        OnPropertyChanged(nameof(VideoDescription));
     }
 }

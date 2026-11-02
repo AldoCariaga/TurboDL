@@ -72,6 +72,22 @@
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,1">
             <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,16,24,16">
                 <StackPanel>
+                    <!-- Video items: yt-dlp downloads the streams one after another, so a single bar says it all. -->
+                    <StackPanel Margin="0,0,0,4" Visibility="{Binding Item.IsVideo, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{Binding Item.Info.Video.Title}" Style="{StaticResource BodyText}" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" TextTrimming="None" />
+                        <TextBlock Text="{Binding VideoSummary}" Style="{StaticResource CaptionText}" Margin="0,2,0,12" />
+                        <controls:SegmentBar Height="8" Fraction="{Binding Item.Fraction}"
+                                             Fill="{DynamicResource AccentFillColorDefaultBrush}"
+                                             Track="{DynamicResource DividerStrokeColorDefaultBrush}"
+                                             AutomationProperties.Name="Video download progress" />
+                        <TextBlock Text="{Binding VideoProgressText}" Style="{StaticResource CaptionText}" Margin="0,8,0,0"
+                                   Typography.NumeralAlignment="Tabular" />
+                        <TextBlock Text="Video and audio come down as separate streams; ffmpeg merges them at the end."
+                                   Style="{StaticResource CaptionText}" Margin="0,2,0,20" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding Item.IsVideo, Converter={StaticResource InverseBoolToVisibility}}">
                     <!-- The map: each block is a slice of the file. -->
                     <controls:SegmentMap Height="112" Segments="{Binding Item.Segments}" Total="{Binding Item.Total}"
                                          IsActive="{Binding Item.IsRunning}"
@@ -116,6 +132,7 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    </StackPanel>
 
                     <TextBlock Text="Speed limit for this download" Style="{StaticResource BodyText}" FontWeight="SemiBold"
                                Margin="0,24,0,8" />

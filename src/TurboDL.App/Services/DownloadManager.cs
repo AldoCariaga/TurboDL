@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using TurboDL.Core.Engine;
 using TurboDL.Core.Model;
 using TurboDL.Core.Storage;
+using TurboDL.Core.Video;
 using TurboDL.App.ViewModels;
 
 namespace TurboDL.App.Services;
@@ -21,14 +22,36 @@ public interface IUserPrompts
 /// Owns every download: the list, the running tasks, the shared <see cref="HttpClient"/> and the store.
 /// All public members are called on the UI thread.
 /// </summary>
-public sealed class DownloadManager(
-    HttpClient http,
-    RateLimiter globalLimiter,
-    DownloadStore store,
-    IUserPrompts prompts,
-    ILogger<DownloadManager> log)
+public sealed class DownloadManager
 {
     private readonly Dispatcher _ui = Dispatcher.CurrentDispatcher;
+    private readonly HttpClient http;
+    private readonly RateLimiter globalLimiter;
+    private readonly DownloadStore store;
+    private readonly IUserPrompts prompts;
+    private readonly VideoToolsService videoTools;
+    private readonly ILogger<DownloadManager> log;
+
+    public DownloadManager(HttpClient http, RateLimiter globalLimiter, DownloadStore store, IUserPrompts prompts,
+        VideoToolsService videoTools, SettingsService settings, ILogger<DownloadManager> log)
+    {
+        this.http = http;
+        this.globalLimiter = globalLimiter;
+        this.store = store;
+        this.prompts = prompts;
+        this.videoTools = videoTools;
+        this.log = log;
+        // yt-dlp takes its cap on the command line, so a new global limit means restarting running videos.
+        settings.Changed += _ =>
+        {
+            foreach (var item in Items.Where(i => i.VideoJob is { } job
+                         && job.RateLimit != VideoJob.EffectiveLimit(i.Info.SpeedLimit ?? 0, globalLimiter.BytesPerSecond)).ToList())
+                Restart(item);
+        };
+    }
+
+    /// <summary>True while any video download runs (the tools must not be updated then).</summary>
+    public bool AnyVideoRunning => Items.Any(i => i.VideoJob is not null);
 
     public ObservableCollection<DownloadItemViewModel> Items { get; } = [];
 
@@ -70,10 +93,15 @@ public sealed class DownloadManager(
     public void Start(DownloadItemViewModel item)
     {
         if (item.IsRunning || item.Info.Status == DownloadStatus.Completed) return;
-        item.Run = RunAsync(item);
+        item.Run = item.IsVideo ? RunVideoAsync(item) : RunAsync(item);
     }
 
-    public void Pause(DownloadItemViewModel item) => item.Cts?.Cancel();
+    /// <summary>Stops a download. A restart that was on its way (new speed limit) is called off: pausing wins.</summary>
+    public void Pause(DownloadItemViewModel item)
+    {
+        item.RestartRequested = false;
+        item.Cts?.Cancel();
+    }
 
     /// <summary>Puts a stopped download back in the queue so it starts again when the queue does.</summary>
     public void Requeue(DownloadItemViewModel item)
@@ -90,6 +118,16 @@ public sealed class DownloadManager(
         if (item.Task is { } task) task.SetSpeedLimit(bytesPerSecond);
         else item.Info.SpeedLimit = bytesPerSecond > 0 ? bytesPerSecond : null;
         store.Save(item.Info);
+        if (item.VideoJob is { } job && job.RateLimit != VideoJob.EffectiveLimit(bytesPerSecond, globalLimiter.BytesPerSecond))
+            Restart(item);
+    }
+
+    /// <summary>Stops a running video and starts it again at once (--continue), e.g. to apply a new speed limit.</summary>
+    private void Restart(DownloadItemViewModel item)
+    {
+        if (item.VideoJob is null) return;
+        item.RestartRequested = true;
+        item.Cts?.Cancel();
     }
 
     /// <summary>Removes downloads from the list. Partial files always go; finished files go to the Recycle Bin when asked.</summary>
@@ -103,6 +141,7 @@ public sealed class DownloadManager(
             store.Delete(item.Info.Id);
             Items.Remove(item);
             TryDelete(item.Info.TempPath, recycle: false);
+            foreach (var leftover in VideoJob.LeftoverFiles(item.Info)) TryDelete(leftover, recycle: false);
             if (deleteFiles && item.Info.Status == DownloadStatus.Completed && !string.IsNullOrEmpty(item.Info.FileName))
                 TryDelete(item.Info.FilePath, recycle: true);
         }
@@ -179,6 +218,74 @@ public sealed class DownloadManager(
             info.Error = null;
             store.Save(info);
             Start(item);
+        }
+    }
+
+    private async Task RunVideoAsync(DownloadItemViewModel item)
+    {
+        var info = item.Info;
+        var resuming = info.Video?.Started == true;
+        var job = new VideoJob(info, videoTools.Service, globalLimiter.BytesPerSecond);
+        job.Checkpoint += store.Save; // yt-dlp's reader thread; Save is thread-safe
+
+        var cts = new CancellationTokenSource();
+        // A tools update may be replacing yt-dlp or Deno right now; start once it's done.
+        var engineRun = Task.Run(async () =>
+        {
+            await videoTools.WaitForUpdateAsync();
+            await job.RunAsync(cts.Token);
+        });
+        item.AttachVideo(job, cts, engineRun);
+        item.AddLog($"{(resuming ? "Resuming" : "Starting")} with yt-dlp: {info.Video!.Describe()}" +
+                    (job.RateLimit > 0 ? $", limited to {Format.Speed(job.RateLimit)}" : ""));
+
+        Exception? error = null;
+        try
+        {
+            await engineRun;
+        }
+        catch (OperationCanceledException)
+        {
+            // Paused: yt-dlp and ffmpeg were killed and VideoJob saved the Paused state; the .part files stay.
+        }
+        catch (Exception ex)
+        {
+            error = ex;
+            log.LogWarning(ex, "Video download {Id} failed", info.Id);
+        }
+        finally
+        {
+            job.Checkpoint -= store.Save;
+            item.Detach();
+        }
+
+        if (error is not null)
+        {
+            if (info.Status != DownloadStatus.Failed)
+            {
+                info.Status = DownloadStatus.Failed;
+                info.Error = error.GetBaseException().Message;
+                store.Save(info);
+                item.Refresh();
+            }
+            item.AddLog(info.Error ?? error.Message);
+        }
+
+        if (item.RestartRequested)
+        {
+            item.RestartRequested = false;
+            if (info.Status == DownloadStatus.Paused)
+            {
+                Start(item);
+                return;
+            }
+        }
+
+        Ended?.Invoke(item);
+        if (info.Status == DownloadStatus.Completed)
+        {
+            item.AddLog($"Saved as {info.FilePath}");
+            Completed?.Invoke(item);
         }
     }
 

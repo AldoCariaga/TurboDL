@@ -39,7 +39,7 @@ public static class YtDlpOutput
         {
             Id = Str(root, "id") ?? "",
             Title = Str(root, "title") ?? Str(root, "id") ?? "video",
-            Thumbnail = Str(root, "thumbnail"),
+            Thumbnail = PickThumbnail(root),
             Duration = duration is >= 0 and < 1e9 ? TimeSpan.FromSeconds(duration.Value) : null,
             Extractor = Str(root, "extractor_key") is { } key ? key.ToLowerInvariant() : Str(root, "extractor"),
             Uploader = Str(root, "uploader"),
@@ -47,6 +47,21 @@ public static class YtDlpOutput
             Formats = formats,
         };
         return VideoProbeResult.Success(info);
+    }
+
+    private static string? PickThumbnail(JsonElement root)
+    {
+        static bool IsWebp(string url) => url.Split('?')[0].EndsWith(".webp", StringComparison.OrdinalIgnoreCase);
+
+        var main = Str(root, "thumbnail");
+        if (main is not null && !IsWebp(main)) return main;
+        if (root.TryGetProperty("thumbnails", out var list) && list.ValueKind == JsonValueKind.Array)
+        {
+            // yt-dlp lists them worst to best; take the best one that isn't WebP.
+            foreach (var t in list.EnumerateArray().Reverse())
+                if (Str(t, "url") is { } url && !IsWebp(url)) return url;
+        }
+        return main;
     }
 
     private static VideoFormat? ParseFormat(JsonElement f)
@@ -101,6 +116,8 @@ public static class YtDlpOutput
                 IsEstimate = exact is null && estimate is not null,
                 Speed = Num(p, "speed"),
                 Eta = eta is >= 0 and < 1e9 ? TimeSpan.FromSeconds(eta.Value) : null,
+                FileName = Str(p, "file") is { } file and not "NA" ? file : null,
+                TempFileName = Str(p, "tmp") is { } tmp and not "NA" ? tmp : null,
             };
         }
         catch (JsonException)

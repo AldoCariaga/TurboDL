@@ -46,6 +46,12 @@ public sealed partial class DetailsViewModel : ObservableObject, IDisposable
     }
 
     public DownloadItemViewModel Item { get; }
+
+    /// <summary>Video items: e.g. "Downloading audio · 42%".</summary>
+    [ObservableProperty] public partial string VideoProgressText { get; private set; } = "";
+
+    /// <summary>Video items: the duration and what was asked for, e.g. "3:32 · Up to 1080p · mp4".</summary>
+    [ObservableProperty] public partial string VideoSummary { get; private set; } = "";
     public ObservableCollection<SegmentRowViewModel> Parts { get; } = [];
 
     [ObservableProperty] public partial string DownloadedText { get; private set; } = "";
@@ -88,6 +94,11 @@ public sealed partial class DetailsViewModel : ObservableObject, IDisposable
     private void Update()
     {
         Item.Refresh(); // our own fresh snapshot, so per-part speeds use this timer's intervals
+        if (Item.IsVideo)
+        {
+            UpdateVideo();
+            return;
+        }
         var total = Item.Total;
         var segments = Item.Segments ?? [];
         var downloaded = segments.Sum(s => s.Position - s.Start);
@@ -138,5 +149,25 @@ public sealed partial class DetailsViewModel : ObservableObject, IDisposable
         ResumeText = Item.Info.TotalSize is null && Item.Status != DownloadStatus.Completed
             ? "Not known until the download starts"
             : Item.Info.SupportsRanges ? "Yes" : "No, the server sends it in one piece";
+    }
+
+    private void UpdateVideo()
+    {
+        var total = Item.Total;
+        var downloaded = Item.Status == DownloadStatus.Completed && total is long t ? t : Item.Info.Downloaded;
+        DownloadedText = total is long size
+            ? $"{Format.Bytes(downloaded)} of {(Item.SizeText.StartsWith('~') ? "~" : "")}{Format.Bytes(size)}"
+            : downloaded > 0 ? Format.Bytes(downloaded) : Format.None;
+        VideoProgressText = Item.Status == DownloadStatus.Downloading && Item.PercentText.Length > 0
+            ? $"{Item.StatusText} · {Item.PercentText}"
+            : Item.StatusText;
+        var video = Item.Info.Video;
+        VideoSummary = string.Join(" · ", new[]
+        {
+            video?.DurationSeconds is double secs ? Format.Duration(TimeSpan.FromSeconds(secs)) : null,
+            video?.Describe(),
+        }.Where(s => !string.IsNullOrEmpty(s)));
+        ConnectionsText = "";
+        ResumeText = "Yes: yt-dlp keeps its partial files and carries on from them";
     }
 }

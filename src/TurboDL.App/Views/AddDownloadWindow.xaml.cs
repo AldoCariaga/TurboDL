@@ -25,6 +25,7 @@ public partial class AddDownloadWindow : FluentWindow
         };
         Closed += (_, _) =>
         {
+            vm.Abandon(); // closing with the title bar's X also stops a probe or a tools download
             vm.CloseRequested -= Close;
             vm.PropertyChanged -= OnVmChanged;
         };

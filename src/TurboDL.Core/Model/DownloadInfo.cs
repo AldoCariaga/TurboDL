@@ -55,9 +55,12 @@ public sealed class DownloadInfo
 
     public List<SegmentState> Segments { get; set; } = [];
 
+    /// <summary>yt-dlp settings and progress for <see cref="DownloadKind.Video"/>; null for plain files.</summary>
+    public Video.VideoOptions? Video { get; set; }
+
     [JsonIgnore] public string FilePath => Path.Combine(Directory, FileName);
     [JsonIgnore] public string TempPath => FilePath + ".turbodl";
-    [JsonIgnore] public long Downloaded => Segments.Sum(s => s.Position - s.Start);
+    [JsonIgnore] public long Downloaded => Video?.DownloadedBytes ?? Segments.Sum(s => s.Position - s.Start);
 }
 
 /// <summary>A byte range of the file and how far it has got. <see cref="End"/> is inclusive.</summary>

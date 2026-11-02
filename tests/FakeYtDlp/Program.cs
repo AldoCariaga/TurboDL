@@ -43,7 +43,7 @@ string? Option(string name)
 }
 
 int? childPid = null;
-if (url.AbsolutePath is "/slow" or "/hang")
+if (url.AbsolutePath == "/hang" || (url.AbsolutePath == "/slow" && !probe))
 {
     // A grandchild, like the ffmpeg yt-dlp starts: killing the tree must take it down too.
     var child = Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--child-sleep") { UseShellExecute = false, CreateNoWindow = true })!;
@@ -85,6 +85,7 @@ if (probe)
     switch (url.AbsolutePath)
     {
         case "/video":
+        case "/slow":
             stdout.WriteLine(VideoJson(url));
             return 0;
         case "/playlist":
@@ -113,6 +114,8 @@ void Progress(string format, string vcodec, string acodec, long done, long? tota
         ["info.format_id"] = format,
         ["info.vcodec"] = vcodec,
         ["info.acodec"] = acodec,
+        ["progress.filename"] = Path.Combine(Option("-P") ?? "", $"Fäke vidéo ✓.f{format}.{(vcodec == "none" ? "m4a" : "mp4")}"),
+        ["progress.tmpfilename"] = Path.Combine(Option("-P") ?? "", $"Fäke vidéo ✓.f{format}.{(vcodec == "none" ? "m4a" : "mp4")}.part"),
     }));
 }
 

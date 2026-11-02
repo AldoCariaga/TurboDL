@@ -14,6 +14,7 @@ using TurboDL.Core.Engine;
 using TurboDL.Core.Ipc;
 using TurboDL.Core.Settings;
 using TurboDL.Core.Storage;
+using TurboDL.Core.Video;
 using Wpf.Ui.Controls;
 using MenuItem = System.Windows.Controls.MenuItem;
 
@@ -58,6 +59,8 @@ public partial class App : Application
         // --db=<path> runs on a throwaway list; its settings then live next to it.
         var db = builder.Configuration["db"];
         var settingsPath = db is null ? null : Path.ChangeExtension(db, ".settings.json");
+        // --tools=<folder> uses another yt-dlp/ffmpeg/Deno folder (tests, or a portable setup).
+        var toolsFolder = builder.Configuration["tools"];
 
         var services = builder.Services;
         services.AddSingleton(_ => TurboHttp.CreateClient());
@@ -70,6 +73,9 @@ public partial class App : Application
         services.AddSingleton<IUserPrompts>(sp => sp.GetRequiredService<Prompts>());
         services.AddSingleton<IDeletePrompt>(sp => sp.GetRequiredService<Prompts>());
         services.AddSingleton<IPowerActions, PowerActions>();
+        services.AddSingleton(sp => new YtDlpTools(toolsFolder, sp.GetRequiredService<System.Net.Http.HttpClient>()));
+        services.AddSingleton(sp => new YtDlpService(sp.GetRequiredService<YtDlpTools>()));
+        services.AddSingleton<VideoToolsService>();
         services.AddSingleton<DownloadManager>();
         services.AddSingleton<QueueService>();
         services.AddSingleton<ClipboardWatcher>();
@@ -106,6 +112,7 @@ public partial class App : Application
 
         manager.Load();
         queue.Initialize();
+        Get<VideoToolsService>().StartBackgroundUpdates(() => manager.AnyVideoRunning);
 
         // Second launches and the browser's native host reach this copy through the pipe.
         var ipc = Get<IpcServer>();
@@ -119,6 +126,7 @@ public partial class App : Application
         if (_host is not null)
         {
             Get<IpcServer>().Stop();
+            Get<VideoToolsService>().StopBackgroundUpdates();
             Get<DownloadManager>().Shutdown();
             Get<ClipboardWatcher>().Dispose();
             _tray?.Dispose();
