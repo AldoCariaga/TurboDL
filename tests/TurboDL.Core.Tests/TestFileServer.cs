@@ -39,6 +39,9 @@ public sealed class TestFileServer : IAsyncDisposable
     /// <summary>Start offsets of every ranged data request (the 0-0 probe excluded).</summary>
     public ConcurrentQueue<long> RangeStarts { get; } = new();
 
+    /// <summary>The headers of every request (probe included), in arrival order.</summary>
+    public ConcurrentQueue<Dictionary<string, string>> RequestHeaders { get; } = new();
+
     public string Url { get; private set; } = "";
 
     private TestFileServer(byte[] data)
@@ -68,6 +71,7 @@ public sealed class TestFileServer : IAsyncDisposable
 
     private async Task Handle(HttpContext ctx)
     {
+        RequestHeaders.Enqueue(ctx.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString(), StringComparer.OrdinalIgnoreCase));
         var res = ctx.Response;
         var len = (long)Data.Length;
         if (ETag is not null) res.Headers.ETag = ETag;
