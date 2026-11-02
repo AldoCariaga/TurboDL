@@ -9,12 +9,15 @@ public static class IpcCommands
     public const string Show = "show";
     public const string GetConfig = "getConfig";
 
-    public static bool IsKnown(string? type) => type is Add or Show or GetConfig;
+    /// <summary>A video page (or a video on it) for yt-dlp: opens the Add dialog in video mode.</summary>
+    public const string AddVideo = "addVideo";
+
+    public static bool IsKnown(string? type) => type is Add or Show or GetConfig or AddVideo;
 }
 
 /// <summary>
 /// One request line: <c>{"type":"add","url","filename?","referrer?","userAgent?","cookies?","size?"}</c>,
-/// <c>{"type":"show"}</c> or <c>{"type":"getConfig"}</c>.
+/// <c>{"type":"addVideo","url","pageUrl?","referrer?","userAgent?","cookies?"}</c>, <c>{"type":"show"}</c> or <c>{"type":"getConfig"}</c>.
 /// </summary>
 public sealed class IpcRequest
 {
@@ -26,6 +29,9 @@ public sealed class IpcRequest
     public string? Filename { get; set; }
 
     public string? Referrer { get; set; }
+
+    /// <summary>addVideo only: the page the video was on, when <see cref="Url"/> is the video itself or a link on it.</summary>
+    public string? PageUrl { get; set; }
     public string? UserAgent { get; set; }
 
     /// <summary>The value of a Cookie header, e.g. <c>a=1; b=2</c>.</summary>
@@ -51,12 +57,28 @@ public sealed class IpcRequest
             Size = size,
         };
 
-    /// <summary>The request headers a caught browser download should carry: Cookie, Referer and User-Agent, when given.</summary>
+    public static IpcRequest AddVideo(string url, string? pageUrl = null, string? referrer = null, string? userAgent = null,
+        string? cookies = null) =>
+        new()
+        {
+            Type = IpcCommands.AddVideo,
+            Url = url,
+            PageUrl = pageUrl,
+            Referrer = referrer,
+            UserAgent = userAgent,
+            Cookies = cookies,
+        };
+
+    /// <summary>
+    /// The request headers a caught browser download should carry: Cookie, Referer and User-Agent, when given.
+    /// With no referrer, the page a video came from stands in for it.
+    /// </summary>
     public Dictionary<string, string> BrowserHeaders()
     {
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(Cookies)) headers["Cookie"] = Cookies.Trim();
         if (!string.IsNullOrWhiteSpace(Referrer)) headers["Referer"] = Referrer.Trim();
+        else if (IsHttp(PageUrl)) headers["Referer"] = PageUrl!.Trim();
         if (!string.IsNullOrWhiteSpace(UserAgent)) headers["User-Agent"] = UserAgent.Trim();
         return headers;
     }
@@ -66,15 +88,18 @@ public sealed class IpcRequest
     {
         if (string.IsNullOrWhiteSpace(Type)) return "The request has no \"type\".";
         if (!IpcCommands.IsKnown(Type)) return $"Unknown command \"{Type}\".";
-        if (Type == IpcCommands.Add)
+        if (Type is IpcCommands.Add or IpcCommands.AddVideo)
         {
-            if (string.IsNullOrWhiteSpace(Url)) return "\"add\" needs a \"url\".";
-            if (!Uri.TryCreate(Url.Trim(), UriKind.Absolute, out var uri)
-                || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-                return "\"url\" must be an http:// or https:// link.";
+            if (string.IsNullOrWhiteSpace(Url)) return $"\"{Type}\" needs a \"url\".";
+            if (!IsHttp(Url)) return "\"url\" must be an http:// or https:// link.";
+            if (Type == IpcCommands.AddVideo && !string.IsNullOrWhiteSpace(PageUrl) && !IsHttp(PageUrl))
+                return "\"pageUrl\" must be an http:// or https:// link.";
         }
         return null;
     }
+
+    private static bool IsHttp(string? url) =>
+        Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 }
 
 /// <summary>Every reply is <c>{"ok":true|false,"error?"}</c>; <c>getConfig</c> adds the catching settings.</summary>

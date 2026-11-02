@@ -109,12 +109,40 @@ public sealed class IpcJsonTests
 
     [Theory]
     [InlineData("""{"url":"https://e.example/f"}""", "no \"type\"")]
-    [InlineData("""{"type":"addVideo","url":"https://e.example/f"}""", "Unknown command")]
+    [InlineData("""{"type":"addPlaylist","url":"https://e.example/f"}""", "Unknown command")]
+    [InlineData("""{"type":"addVideo"}""", "\"addVideo\" needs a \"url\"")]
+    [InlineData("""{"type":"addVideo","url":"blob:https://e.example/1"}""", "http://")]
+    [InlineData("""{"type":"addVideo","url":"https://e.example/v","pageUrl":"file:///c:/x"}""", "\"pageUrl\"")]
     [InlineData("""{"type":"add"}""", "needs a \"url\"")]
     [InlineData("""{"type":"add","url":"ftp://e.example/f"}""", "http://")]
     [InlineData("""{"type":"add","url":"not a url"}""", "http://")]
     public void Validate_ExplainsWhatIsWrong(string json, string expected) =>
         Assert.Contains(expected, IpcJson.ParseRequest(json).Validate());
+
+    [Fact]
+    public void AddVideo_IsKnown_Valid_AndUsesContractNames()
+    {
+        Assert.True(IpcCommands.IsKnown("addVideo"));
+        var req = IpcRequest.AddVideo("https://v.example/watch?v=1", "https://v.example/page", null, "UA/1", "a=1");
+        Assert.Null(req.Validate());
+        Assert.Equal(
+            """{"type":"addVideo","url":"https://v.example/watch?v=1","pageUrl":"https://v.example/page","userAgent":"UA/1","cookies":"a=1"}""",
+            IpcJson.Serialize(req));
+
+        var parsed = IpcJson.ParseRequest("""{"type":"addVideo","url":"https://v.example/v","pageUrl":"https://v.example/p"}""");
+        Assert.Equal("https://v.example/p", parsed.PageUrl);
+        Assert.Null(parsed.Validate());
+    }
+
+    [Fact]
+    public void BrowserHeaders_UseThePageAsReferer_WhenThereIsNone()
+    {
+        var headers = IpcRequest.AddVideo("https://cdn.example/v.mp4", "https://v.example/page").BrowserHeaders();
+        Assert.Equal("https://v.example/page", headers["Referer"]);
+
+        var explicitReferrer = IpcRequest.AddVideo("https://cdn.example/v.mp4", "https://v.example/page", "https://r.example/").BrowserHeaders();
+        Assert.Equal("https://r.example/", explicitReferrer["Referer"]);
+    }
 
     [Fact]
     public void BrowserHeaders_MapsToHttpHeaderNames_AndSkipsBlanks()

@@ -124,7 +124,7 @@ public sealed class NativeHostTests : IAsyncDisposable
     }
 
     [Theory]
-    [InlineData("""{"type":"addVideo","url":"https://e.example/v"}""")]
+    [InlineData("""{"type":"addPlaylist","url":"https://e.example/v"}""")]
     [InlineData("""{"url":"https://e.example/v"}""")]
     public async Task OtherMessages_WithNoApp_DontLaunchEither(string message)
     {
@@ -137,6 +137,7 @@ public sealed class NativeHostTests : IAsyncDisposable
     [Theory]
     [InlineData("""{"type":"add","url":"https://e.example/f.zip"}""")]
     [InlineData("""{"type":"show"}""")]
+    [InlineData("""{"type":"addVideo","url":"https://v.example/watch?v=1","pageUrl":"https://v.example/watch?v=1"}""")]
     public async Task AddOrShow_WithNoApp_LaunchesIt_ThenDelivers(string message)
     {
         var launcher = new FakeLauncher(onLaunch: () => Task.Delay(500).ContinueWith(_ => StartApp())); // app opens its pipe a bit later

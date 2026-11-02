@@ -93,7 +93,7 @@ public sealed class NativeHostLoop(IAppLauncher launcher, HostLog log)
 
         // Only a user action (a caught download, the context menu) may start TurboDL. The extension polls
         // getConfig in the background, and starting the app for that would bring it back every time it's quit.
-        if (type is not (IpcCommands.Add or IpcCommands.Show))
+        if (type is not (IpcCommands.Add or IpcCommands.AddVideo or IpcCommands.Show))
         {
             log.Write($"{Describe(type)}: TurboDL is not running, not starting it.");
             return Fail(NotRunning);
