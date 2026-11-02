@@ -1,0 +1,164 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <!--
+        TurboDL visual tokens.
+        Type: Segoe UI Variable on the Windows 11 ramp (12 caption / 14 body / 20 subtitle / 28 title).
+        Every number that updates live uses tabular figures so columns don't jitter.
+        Colour carries meaning only: accent = moving, caution = paused, critical = failed, quiet = done.
+    -->
+
+    <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+    <FontFamily x:Key="TextFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="DisplayFont">Segoe UI Variable Display, Segoe UI</FontFamily>
+
+    <sys:Double x:Key="CaptionSize">12</sys:Double>
+    <sys:Double x:Key="BodySize">14</sys:Double>
+    <sys:Double x:Key="SubtitleSize">20</sys:Double>
+    <sys:Double x:Key="TitleSize">28</sys:Double>
+
+    <!-- Download list column widths, shared by the header and every row. -->
+    <GridLength x:Key="ColIcon">28</GridLength>
+    <GridLength x:Key="ColSize">84</GridLength>
+    <GridLength x:Key="ColProgress">176</GridLength>
+    <GridLength x:Key="ColSpeed">96</GridLength>
+    <GridLength x:Key="ColLeft">72</GridLength>
+    <GridLength x:Key="ColStatus">112</GridLength>
+
+    <Style x:Key="BodyText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource TextFont}" />
+        <Setter Property="FontSize" Value="{StaticResource BodySize}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="CaptionText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+        <Setter Property="FontSize" Value="{StaticResource CaptionSize}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+    </Style>
+
+    <Style x:Key="SubtitleText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontSize" Value="{StaticResource SubtitleSize}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="NumberText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+        <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
+        <Setter Property="TextAlignment" Value="Right" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+    </Style>
+
+    <Style x:Key="ColumnHeaderText" TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+    </Style>
+
+    <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+        <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+
+    <!--
+        Selectable rows: Windows 11 list idiom. Subtle fill on hover, a short accent pill on the left when selected.
+        Used by both the sidebar and the download list.
+    -->
+    <Style x:Key="PillItemBase" TargetType="Control">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <ControlTemplate x:Key="PillItemTemplate" TargetType="ListBoxItem">
+        <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="4">
+            <Grid>
+                <Border x:Name="Pill" Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left"
+                        VerticalAlignment="Center" Background="{DynamicResource AccentFillColorDefaultBrush}"
+                        Visibility="Collapsed" />
+                <ContentPresenter Margin="{TemplateBinding Padding}" />
+            </Grid>
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                <Setter TargetName="Pill" Property="Visibility" Value="Visible" />
+            </Trigger>
+            <MultiTrigger>
+                <MultiTrigger.Conditions>
+                    <Condition Property="IsSelected" Value="True" />
+                    <Condition Property="IsMouseOver" Value="True" />
+                </MultiTrigger.Conditions>
+                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+            </MultiTrigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <Style x:Key="SidebarItem" TargetType="ListBoxItem" BasedOn="{StaticResource PillItemBase}">
+        <Setter Property="Height" Value="36" />
+        <Setter Property="Margin" Value="0,1" />
+        <Setter Property="Padding" Value="12,0,12,0" />
+        <Setter Property="Template" Value="{StaticResource PillItemTemplate}" />
+    </Style>
+
+    <Style x:Key="DownloadRow" TargetType="ListViewItem" BasedOn="{StaticResource PillItemBase}">
+        <Setter Property="Height" Value="34" />
+        <Setter Property="Margin" Value="0,1" />
+        <Setter Property="Padding" Value="8,0,12,0" />
+        <Setter Property="Template" Value="{StaticResource PillItemTemplate}" />
+    </Style>
+
+    <!-- Flat toolbar button: no fill until hovered, and no grey box when disabled. -->
+    <Style x:Key="ToolbarButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="FontFamily" Value="{StaticResource TextFont}" />
+        <Setter Property="FontSize" Value="{StaticResource BodySize}" />
+        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="4"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Plain list chrome: no border or background, so rows sit directly on the content layer. -->
+    <Style x:Key="BareList" TargetType="ListBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBox">
+                    <ScrollViewer Focusable="False" Padding="{TemplateBinding Padding}" CanContentScroll="True">
+                        <ItemsPresenter />
+                    </ScrollViewer>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>
