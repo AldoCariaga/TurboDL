@@ -62,6 +62,8 @@ function renderMenuError() {
     box.hidden = true;
     return;
   }
+  $("menu-error-title").textContent =
+    `Couldn't send the ${shownMenuError.kind === "video" ? "video" : "link"} to TurboDL`;
   $("menu-error-url").textContent = shownMenuError.url || "";
   $("menu-error-text").textContent =
     `${shownMenuError.error || "Unknown error"} (${ago(shownMenuError.at)})`;

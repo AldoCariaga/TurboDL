@@ -159,11 +159,16 @@ async function installed(opts) {
   return b;
 }
 
-test("install: link-only menu, refresh alarm, config fetched and cached", async () => {
+test("install: link menu + video menu, refresh alarm, config fetched and cached", async () => {
   const b = await installed({ host: hostWith(goodConfig) });
-  assert.equal(b.calls.menus.length, 1);
-  assert.deepEqual(b.calls.menus[0].contexts, ["link"]);
-  assert.equal(b.calls.menus[0].title, "Download with TurboDL");
+  assert.equal(b.calls.menus.length, 2);
+  assert.deepEqual(b.calls.menus[0], {
+    id: "turbodl-download-link", title: "Download with TurboDL", contexts: ["link"],
+    targetUrlPatterns: ["http://*/*", "https://*/*"],
+  }, "link menu unchanged");
+  assert.equal(b.calls.menus[1].id, "turbodl-download-video");
+  assert.equal(b.calls.menus[1].title, "Download video with TurboDL");
+  assert.deepEqual(b.calls.menus[1].contexts, ["page", "video", "link", "frame"]);
   assert.equal(b.persist.alarms["turbodl-refresh-config"].periodInMinutes, 10);
   assert.deepEqual(b.calls.native[0], { name: "com.turbodl.host", msg: { type: "getConfig" } });
   assert.deepEqual(b.persist.local.config.catchExtensions, ["zip", "exe"]);
@@ -324,6 +329,7 @@ test("context menu failure: no Chrome download, red ! badge until the next succe
   await flush();
   assert.equal(b.calls.download.length, 0, "not handed to Chrome");
   assert.equal(b.persist.local.menuError.url, "https://e/a.zip");
+  assert.equal(b.persist.local.menuError.kind, "link");
   assert.equal(b.persist.local.menuError.error, "no host");
   assert.equal(b.calls.badge.at(-1), "!");
   assert.equal(b.calls.badgeColor, "#c42b1c");
@@ -439,4 +445,90 @@ test("F1: the loop guard also matches when Chrome reports the fallback by its re
   b.chrome.downloads.onCreated.fire({ ...GITHUB_ITEM, id: 43, url: "https://other/redirect", finalUrl: GITHUB_ITEM.url });
   await flush();
   assert.deepEqual(b.calls.cancel, [42]);
+});
+
+const VIDEO = "turbodl-download-video";
+
+test("video menu on a MediaSource player sends addVideo with the page URL, cookies and UA", async () => {
+  const b = await installed({ host: hostWith(goodConfig), cookies: [{ name: "SID", value: "s", path: "/" }] });
+  const page = "https://www.youtube.com/watch?v=abc";
+  b.chrome.contextMenus.onClicked.fire(
+    { menuItemId: VIDEO, mediaType: "video", srcUrl: "blob:https://www.youtube.com/5a1b", pageUrl: page },
+    { url: page }
+  );
+  await flush();
+  assert.deepEqual(b.calls.native.at(-1), {
+    name: "com.turbodl.host",
+    msg: { type: "addVideo", url: page, pageUrl: page, referrer: page, userAgent: UA, cookies: "SID=s" },
+  });
+  assert.equal(b.calls.cookiesFor, page);
+  assert.equal(b.persist.local.menuError, undefined);
+  assert.equal(b.calls.download.length, 0);
+});
+
+test("video menu prefers a real video src, and takes cookies for that URL", async () => {
+  const b = await installed({ host: hostWith(goodConfig) });
+  b.chrome.contextMenus.onClicked.fire(
+    { menuItemId: VIDEO, mediaType: "video", srcUrl: "https://cdn.e/clip.mp4", linkUrl: "https://e/l", pageUrl: "https://e/post" },
+    { url: "https://e/post" }
+  );
+  await flush();
+  const msg = b.calls.native.at(-1).msg;
+  assert.equal(msg.url, "https://cdn.e/clip.mp4");
+  assert.equal(msg.pageUrl, "https://e/post");
+  assert.equal(msg.referrer, "https://e/post");
+  assert.equal(b.calls.cookiesFor, "https://cdn.e/clip.mp4");
+});
+
+test("video menu in an embedded player frame sends the frame URL, page URL from the tab", async () => {
+  const b = await installed({ host: hostWith(goodConfig) });
+  b.chrome.contextMenus.onClicked.fire(
+    { menuItemId: VIDEO, frameUrl: "https://player.vimeo.com/video/1", pageUrl: "https://blog.e/post" },
+    { url: "https://blog.e/post" }
+  );
+  await flush();
+  const msg = b.calls.native.at(-1).msg;
+  assert.equal(msg.url, "https://player.vimeo.com/video/1");
+  assert.equal(msg.pageUrl, "https://blog.e/post");
+});
+
+test("video menu: no tab falls back to info.pageUrl; nothing http(s) sends nothing", async () => {
+  const b = await installed({ host: hostWith(goodConfig) });
+  b.chrome.contextMenus.onClicked.fire({ menuItemId: VIDEO, linkUrl: "https://e/v/9", pageUrl: "https://e/list" }, undefined);
+  await flush();
+  assert.equal(b.calls.native.at(-1).msg.pageUrl, "https://e/list");
+  const before = b.calls.native.length;
+  b.chrome.contextMenus.onClicked.fire({ menuItemId: VIDEO, pageUrl: "chrome://newtab/" }, { url: "chrome://newtab/" });
+  await flush();
+  assert.equal(b.calls.native.length, before);
+});
+
+test("video menu failure: red ! badge and a video error, no Chrome download, cleared on success", async () => {
+  const b = await installed({ host: hostWith(goodConfig, () => ({ ok: false, error: "yt-dlp is missing" })) });
+  b.chrome.contextMenus.onClicked.fire({ menuItemId: VIDEO, pageUrl: "https://e/watch" }, { url: "https://e/watch" });
+  await flush();
+  const err = b.persist.local.menuError;
+  assert.deepEqual({ kind: err.kind, url: err.url, error: err.error }, { kind: "video", url: "https://e/watch", error: "yt-dlp is missing" });
+  assert.equal(b.calls.badge.at(-1), "!");
+  assert.equal(b.calls.download.length, 0);
+  assert.equal(b.calls.cancel.length, 0);
+
+  b.host = () => { throw new Error("Specified native messaging host not found."); };
+  b.chrome.contextMenus.onClicked.fire({ menuItemId: VIDEO, pageUrl: "https://e/watch2" }, { url: "https://e/watch2" });
+  await flush();
+  assert.match(b.persist.local.menuError.error, /not found/);
+
+  b.host = hostWith(goodConfig);
+  b.chrome.contextMenus.onClicked.fire({ menuItemId: VIDEO, pageUrl: "https://e/watch3" }, { url: "https://e/watch3" });
+  await flush();
+  assert.equal(b.persist.local.menuError, undefined);
+  assert.equal(b.calls.badge.at(-1), "");
+});
+
+test("unknown menu ids are ignored", async () => {
+  const b = await installed({ host: hostWith(goodConfig) });
+  const before = b.calls.native.length;
+  b.chrome.contextMenus.onClicked.fire({ menuItemId: "something-else", linkUrl: "https://e/a.zip", pageUrl: "https://e/" }, {});
+  await flush();
+  assert.equal(b.calls.native.length, before);
 });

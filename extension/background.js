@@ -3,7 +3,8 @@
 // service workers are stopped and restarted at any time.
 //
 // chrome.storage.local:   catching (bool, default true), config, hostStatus,
-//                         menuError (a failed "Download with TurboDL"; shows the red "!" badge)
+//                         menuError (a failed context-menu send, { kind: "link"|"video", url, error, at };
+//                         shows the red "!" badge until it is seen or a native call succeeds)
 // chrome.storage.session: bypass (URLs handed back to Chrome, so they aren't caught again)
 "use strict";
 
@@ -20,10 +21,13 @@ const {
   addBypass,
   consumeBypass,
   buildAddMessage,
+  buildAddVideoMessage,
+  pickVideoUrl,
   parseConfigReply,
 } = self.TurboDL;
 
 const MENU_ID = "turbodl-download-link";
+const VIDEO_MENU_ID = "turbodl-download-video";
 const ALARM_ID = "turbodl-refresh-config";
 const REFRESH_MINUTES = 10;
 
@@ -179,11 +183,24 @@ function createMenu() {
       contexts: ["link"],
       targetUrlPatterns: ["http://*/*", "https://*/*"],
     });
+    chrome.contextMenus.create({
+      id: VIDEO_MENU_ID,
+      title: "Download video with TurboDL",
+      contexts: ["page", "video", "link", "frame"],
+      documentUrlPatterns: ["http://*/*", "https://*/*"],
+    });
   });
 }
 
-async function handleMenuClick(info, tab) {
-  if (info.menuItemId !== MENU_ID) return;
+// The user explicitly chose TurboDL from a menu, so a failure is reported, not sent to Chrome.
+async function sendFromMenu(kind, url, message) {
+  const { reply, error } = await callHost(message);
+  if (!reply) {
+    await chrome.storage.local.set({ menuError: { kind, url, error, at: Date.now() } });
+  }
+}
+
+async function handleLinkClick(info, tab) {
   const url = info.linkUrl;
   if (!isHttpUrl(url)) return;
   const message = buildAddMessage({
@@ -192,11 +209,27 @@ async function handleMenuClick(info, tab) {
     userAgent: navigator.userAgent,
     cookies: await cookieHeader(url),
   });
-  // The user explicitly chose TurboDL here, so a failure is reported, not sent to Chrome.
-  const { reply, error } = await callHost(message);
-  if (!reply) {
-    await chrome.storage.local.set({ menuError: { url, error, at: Date.now() } });
-  }
+  await sendFromMenu("link", url, message);
+}
+
+// "Download video with TurboDL": the app opens its video (yt-dlp) Add dialog for the URL.
+async function handleVideoClick(info, tab) {
+  const url = pickVideoUrl(info);
+  if (!url) return;
+  const pageUrl = (tab && isHttpUrl(tab.url) && tab.url) || (isHttpUrl(info.pageUrl) && info.pageUrl) || "";
+  const message = buildAddVideoMessage({
+    url,
+    pageUrl,
+    referrer: pageUrl,
+    userAgent: navigator.userAgent,
+    cookies: await cookieHeader(url),
+  });
+  await sendFromMenu("video", url, message);
+}
+
+async function handleMenuClick(info, tab) {
+  if (info.menuItemId === MENU_ID) await handleLinkClick(info, tab);
+  else if (info.menuItemId === VIDEO_MENU_ID) await handleVideoClick(info, tab);
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -214,7 +247,7 @@ async function updateBadge() {
   if (menuError) {
     color = "#c42b1c";
     text = "!";
-    title = "TurboDL: couldn't send a link to TurboDL. Click for details.";
+    title = `TurboDL: couldn't send the ${menuError.kind === "video" ? "video" : "link"} to TurboDL. Click for details.`;
   } else if (!catching) {
     text = "off";
     title = "TurboDL: catching is off";

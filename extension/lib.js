@@ -281,6 +281,31 @@
     return msg;
   }
 
+  // The URL "Download video with TurboDL" sends, from a contextMenus OnClickData:
+  // a real http(s) <video> src first (blob:/data: sources from MediaSource players are useless outside
+  // the page), then the link under the cursor, then the frame (an embedded player), then the page.
+  // Returns "" when none of them is http(s).
+  function pickVideoUrl(info) {
+    if (!info) return "";
+    const candidates = [
+      info.mediaType === "video" ? info.srcUrl : "",
+      info.linkUrl,
+      info.frameUrl,
+      info.pageUrl,
+    ];
+    return candidates.find(isHttpUrl) || "";
+  }
+
+  // The `addVideo` message for the native host (IPC contract). Optional fields are left out when empty.
+  function buildAddVideoMessage({ url, pageUrl, referrer, userAgent, cookies }) {
+    const msg = { type: "addVideo", url };
+    if (pageUrl) msg.pageUrl = pageUrl;
+    if (referrer) msg.referrer = referrer;
+    if (userAgent) msg.userAgent = userAgent;
+    if (cookies) msg.cookies = cookies;
+    return msg;
+  }
+
   const api = {
     HOST_NAME,
     BYPASS_TTL_MS,
@@ -304,6 +329,8 @@
     addBypass,
     consumeBypass,
     buildAddMessage,
+    pickVideoUrl,
+    buildAddVideoMessage,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

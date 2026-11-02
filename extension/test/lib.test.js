@@ -295,3 +295,36 @@ test("shouldCatch: redirect hints", () => {
   // negative: plain octet-stream with no hints anywhere
   assert.equal(lib.shouldCatch({ url: "https://site/download?id=5", finalUrl: "https://cdn/obj/abc?sig=1", filename: "", mime: "application/octet-stream", totalBytes: 5e6 }, config), false);
 });
+
+test("pickVideoUrl: http(s) video src first", () => {
+  const info = { mediaType: "video", srcUrl: "https://cdn.e/clip.mp4", linkUrl: "https://e/l", frameUrl: "https://f/", pageUrl: "https://e/watch" };
+  assert.equal(lib.pickVideoUrl(info), "https://cdn.e/clip.mp4");
+});
+
+test("pickVideoUrl: blob:/data: sources and non-video media are skipped", () => {
+  const page = "https://www.youtube.com/watch?v=abc";
+  assert.equal(lib.pickVideoUrl({ mediaType: "video", srcUrl: "blob:https://www.youtube.com/0f1e", pageUrl: page }), page, "MediaSource player");
+  assert.equal(lib.pickVideoUrl({ mediaType: "video", srcUrl: "data:video/mp4;base64,AAAA", pageUrl: page }), page);
+  assert.equal(lib.pickVideoUrl({ mediaType: "video", srcUrl: "blob:https://e/1", linkUrl: "https://e/v/2", pageUrl: page }), "https://e/v/2", "then the link");
+  assert.equal(lib.pickVideoUrl({ mediaType: "image", srcUrl: "https://e/thumb.jpg", pageUrl: page }), page, "an image src isn't a video");
+  assert.equal(lib.pickVideoUrl({ srcUrl: "https://e/x.mp4", pageUrl: page }), page, "srcUrl without mediaType video");
+});
+
+test("pickVideoUrl: link, then frame, then page", () => {
+  assert.equal(lib.pickVideoUrl({ linkUrl: "https://e/v/1", frameUrl: "https://player.e/embed/1", pageUrl: "https://e/" }), "https://e/v/1");
+  assert.equal(lib.pickVideoUrl({ linkUrl: "javascript:void(0)", frameUrl: "https://player.e/embed/1", pageUrl: "https://e/" }), "https://player.e/embed/1");
+  assert.equal(lib.pickVideoUrl({ frameUrl: "about:blank", pageUrl: "https://e/" }), "https://e/");
+  assert.equal(lib.pickVideoUrl({ pageUrl: "https://e/watch" }), "https://e/watch");
+  assert.equal(lib.pickVideoUrl({ pageUrl: "chrome://newtab/" }), "", "nothing http(s)");
+  assert.equal(lib.pickVideoUrl({ pageUrl: "file:///C:/v.mp4" }), "");
+  assert.equal(lib.pickVideoUrl(null), "");
+});
+
+test("buildAddVideoMessage leaves out empty optional fields", () => {
+  assert.deepEqual(lib.buildAddVideoMessage({ url: "https://e/w" }), { type: "addVideo", url: "https://e/w" });
+  assert.deepEqual(
+    lib.buildAddVideoMessage({ url: "u", pageUrl: "p", referrer: "r", userAgent: "ua", cookies: "c=1" }),
+    { type: "addVideo", url: "u", pageUrl: "p", referrer: "r", userAgent: "ua", cookies: "c=1" }
+  );
+  assert.deepEqual(lib.buildAddVideoMessage({ url: "u", pageUrl: "", referrer: "", cookies: "" }), { type: "addVideo", url: "u" });
+});
