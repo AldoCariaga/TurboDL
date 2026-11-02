@@ -104,7 +104,8 @@ public sealed class YtDlpService(YtDlpTools tools)
             ToolRunResult run;
             try
             {
-                run = await ToolProcess.RunAsync(Tools.YtDlpPath, args, OnLine, null, timeout: null, ct).ConfigureAwait(false);
+                // --print makes yt-dlp quiet, and a quiet yt-dlp writes its progress to stderr; the file path comes on stdout.
+                run = await ToolProcess.RunAsync(Tools.YtDlpPath, args, OnLine, OnLine, timeout: null, ct).ConfigureAwait(false);
             }
             catch (System.ComponentModel.Win32Exception ex)
             {

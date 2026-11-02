@@ -1,7 +1,7 @@
 // A stand-in for yt-dlp.exe. The URL's path picks the scenario; "?log=<file>" makes it record its
 // arguments (and the cookies file it was given) as JSON, so tests can check exactly what was passed.
-// It evaluates TurboDL's --progress-template and --print templates the way yt-dlp does: missing fields
-// become "NA", and %(...)j fields are JSON.
+// It evaluates TurboDL's --progress-template and --print templates the way yt-dlp does: %(...)j fields are
+// JSON, and a missing field is a bare NA (checked against yt-dlp 2026.10.26).
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -103,7 +103,8 @@ var printTemplate = Templates("--print", "after_move:");
 void Progress(string format, string vcodec, string acodec, long done, long? total, long? estimate, double speed, double eta)
 {
     if (progressTemplate is null) return;
-    stdout.WriteLine(Evaluate(progressTemplate, new()
+    // Like the real one: --print makes yt-dlp quiet, and quiet progress goes to stderr.
+    stderr.WriteLine(Evaluate(progressTemplate, new()
     {
         ["progress.status"] = "downloading",
         ["progress.downloaded_bytes"] = done,
@@ -142,8 +143,8 @@ Progress("140", "none", "mp4a.40.2", 500, null, 1000, 500, 1);
 Progress("140", "none", "mp4a.40.2", 1000, null, 1000, 500, 0);
 if (ppTemplate is not null)
 {
-    stdout.WriteLine(Evaluate(ppTemplate, new() { ["progress.status"] = "started", ["progress.postprocessor"] = "Merger" }));
-    stdout.WriteLine(Evaluate(ppTemplate, new() { ["progress.status"] = "finished", ["progress.postprocessor"] = "Merger" }));
+    stderr.WriteLine(Evaluate(ppTemplate, new() { ["progress.status"] = "started", ["progress.postprocessor"] = "Merger" }));
+    stderr.WriteLine(Evaluate(ppTemplate, new() { ["progress.status"] = "finished", ["progress.postprocessor"] = "Merger" }));
 }
 
 var dir = Option("-P") ?? Environment.CurrentDirectory;
@@ -166,7 +167,8 @@ static string Evaluate(string template, Dictionary<string, object?> values)
     var result = Regex.Replace(template, @"%\(([\w.]+)\)(?:\.\d+)?([sjB])", m =>
     {
         values.TryGetValue(m.Groups[1].Value, out var value);
-        value ??= "NA";
+        // Real yt-dlp prints a missing field as a bare NA, even for %(...)j, which isn't valid JSON.
+        if (value is null) return "NA";
         return m.Groups[2].Value == "j" ? JsonSerializer.Serialize(value) : Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!;
     });
     return result.Replace("%%", "%");

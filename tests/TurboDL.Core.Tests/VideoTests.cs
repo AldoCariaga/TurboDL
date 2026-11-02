@@ -427,8 +427,9 @@ public sealed class YtDlpOutputTests
     [Fact]
     public void Progress_NaFields_AreNull()
     {
+        // As real yt-dlp 2026.10.26 prints it: a missing %(...)j field is a bare NA, which isn't JSON.
         var p = YtDlpOutput.ParseProgress(YtDlpArguments.ProgressPrefix +
-            """{"status":"downloading","downloaded":2048,"total":"NA","estimate":"NA","speed":"NA","eta":"NA","format":"18","vcodec":"avc1","acodec":"mp4a"}""");
+            """{"status":"downloading","downloaded":2048,"total":NA,"estimate":NA,"speed":NA,"eta":NA,"format":"18","vcodec":"avc1","acodec":"mp4a","file":"C:\\v\\NA,NA.mp4","tmp":NA}""");
         Assert.NotNull(p);
         Assert.Equal(VideoPhase.Downloading, p.Phase);
         Assert.Equal(2048, p.DownloadedBytes);
@@ -436,7 +437,51 @@ public sealed class YtDlpOutputTests
         Assert.False(p.IsEstimate);
         Assert.Null(p.Speed);
         Assert.Null(p.Eta);
+        Assert.Null(p.TempFileName);
+        Assert.Equal(@"C:\v\NA,NA.mp4", p.FileName); // an NA inside a string stays
+
+        // A quoted "NA" is fine too.
+        Assert.Null(YtDlpOutput.ParseProgress(YtDlpArguments.ProgressPrefix + """{"downloaded":1,"total":"NA"}""")!.TotalBytes);
+
+        // The last line of a real stream download.
+        var done = YtDlpOutput.ParseProgress(YtDlpArguments.ProgressPrefix +
+            """{"status":"finished","downloaded":19661126,"total":19661126,"estimate":NA,"speed":31674069.8,"eta":NA,"format":"18","vcodec":"avc1.42001E","acodec":"mp4a.40.2","file":"C:\\raw.mp4","tmp":NA}""");
+        Assert.Equal(19661126, done!.TotalBytes);
+        Assert.Equal(31674069.8, done.Speed);
     }
+
+    [Theory]
+    // Text inside strings is never touched, even when it looks like ", NA," or ":NA}".
+    [InlineData("""{"title":"Live, NA, 2024","f":":NA}","x":NA}""", """{"title":"Live, NA, 2024","f":":NA}","x":null}""")]
+    // An escaped quote doesn't end the string; an escaped backslash right before the closing quote does.
+    [InlineData("""{"t":"say \"NA\" now","u":NA}""", """{"t":"say \"NA\" now","u":null}""")]
+    [InlineData("""{"p":"C:\\dir\\","q":NA,"r":"NA"}""", """{"p":"C:\\dir\\","q":null,"r":"NA"}""")]
+    // Arrays, whitespace, several in a row.
+    [InlineData("""[NA, 1, NA]""", """[null, 1, null]""")]
+    [InlineData("""{"a": NA ,"b":NA}""", """{"a": null ,"b":null}""")]
+    // Longer tokens aren't ours.
+    [InlineData("""{"a":NAN,"b":NaN,"c":NA1}""", """{"a":NAN,"b":NaN,"c":NA1}""")]
+    // Nothing to do: same string back.
+    [InlineData("""{"a":1,"b":"x"}""", """{"a":1,"b":"x"}""")]
+    public void FixNa_RewritesOnlyBareNaOutsideStrings(string input, string expected) =>
+        Assert.Equal(expected, YtDlpOutput.FixNa(input));
+
+    [Fact]
+    public void Progress_TitleWithNa_KeepsTheFileName()
+    {
+        var p = YtDlpOutput.ParseProgress(YtDlpArguments.ProgressPrefix +
+            """{"status":"downloading","downloaded":10,"total":NA,"estimate":100,"speed":NA,"eta":NA,"format":"137","vcodec":"avc1","acodec":"none","file":"C:\\v\\Live, NA, 2024.f137.mp4","tmp":"C:\\v\\Live, NA, 2024.f137.mp4.part"}""");
+        Assert.Equal(@"C:\v\Live, NA, 2024.f137.mp4", p!.FileName);
+        Assert.Equal(@"C:\v\Live, NA, 2024.f137.mp4.part", p.TempFileName);
+        Assert.Equal(100, p.TotalBytes);
+        Assert.True(p.IsEstimate);
+        Assert.Equal(VideoPhase.DownloadingVideo, p.Phase);
+    }
+
+    [Fact]
+    public void PostProcess_BareNa_IsTolerated() =>
+        Assert.Equal(VideoPhase.Processing,
+            YtDlpOutput.ParsePostProcess(YtDlpArguments.PostProcessPrefix + """{"status":"started","pp":NA}""")!.Phase);
 
     [Fact]
     public void OtherLines_AreIgnored()
@@ -472,6 +517,7 @@ public sealed class YtDlpOutputTests
     [Fact]
     public void ErrorMessage_FallsBackToTheStderrTail()
     {
+        Assert.Equal("boom", YtDlpOutput.ErrorMessage(["boom", YtDlpArguments.ProgressPrefix + "{}", YtDlpArguments.PostProcessPrefix + "{}"], 1));
         Assert.Equal("Traceback\nboom".Replace("\n", Environment.NewLine), YtDlpOutput.ErrorMessage(["", "Traceback", "boom"], 1));
         Assert.Equal("yt-dlp exited with code 3.", YtDlpOutput.ErrorMessage([], 3));
     }
