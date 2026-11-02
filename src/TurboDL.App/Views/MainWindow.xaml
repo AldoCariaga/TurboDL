@@ -1,0 +1,266 @@
+<ui:FluentWindow x:Class="TurboDL.App.Views.MainWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:vm="clr-namespace:TurboDL.App.ViewModels"
+                 xmlns:controls="clr-namespace:TurboDL.App.Controls"
+                 xmlns:model="clr-namespace:TurboDL.Core.Model;assembly=TurboDL.Core"
+                 mc:Ignorable="d"
+                 d:DataContext="{d:DesignInstance vm:MainWindowViewModel}"
+                 Title="TurboDL"
+                 Width="1180" Height="720" MinWidth="880" MinHeight="460"
+                 WindowStartupLocation="CenterScreen"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowBackdropType="Mica"
+                 WindowCornerPreference="Round"
+                 FontFamily="{StaticResource TextFont}">
+
+    <ui:FluentWindow.InputBindings>
+        <KeyBinding Gesture="Ctrl+N" Command="{Binding AddUrlCommand}" />
+    </ui:FluentWindow.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="TurboDL">
+            <ui:TitleBar.Icon>
+                <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="16" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+            </ui:TitleBar.Icon>
+        </ui:TitleBar>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Sidebar: status views, then categories. Sits straight on Mica. -->
+            <ListBox Grid.Column="0" Style="{StaticResource BareList}" Margin="8,4,8,8"
+                     ItemsSource="{Binding SidebarView}" SelectedItem="{Binding SelectedFilter}"
+                     ItemContainerStyle="{StaticResource SidebarItem}"
+                     AutomationProperties.Name="Download views">
+                <ListBox.GroupStyle>
+                    <GroupStyle>
+                        <GroupStyle.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock x:Name="Header" Text="{Binding Name}" Style="{StaticResource CaptionText}"
+                                           Margin="12,18,0,6" />
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Name}" Value="{x:Null}">
+                                        <Setter TargetName="Header" Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </GroupStyle.HeaderTemplate>
+                    </GroupStyle>
+                </ListBox.GroupStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="vm:SidebarFilter">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="28" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:SymbolIcon Grid.Column="0" Symbol="{Binding Icon}" FontSize="16" HorizontalAlignment="Left"
+                                           VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" Style="{StaticResource BodyText}" />
+                            <TextBlock x:Name="Count" Grid.Column="2" Text="{Binding Count}" Style="{StaticResource NumberText}"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        </Grid>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding Count}" Value="0">
+                                <Setter TargetName="Count" Property="Visibility" Value="Hidden" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- Content layer: the one raised surface, Windows 11 NavigationView style. -->
+            <Border Grid.Column="1" Background="{DynamicResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1,1,0,0"
+                    CornerRadius="8,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Toolbar -->
+                    <DockPanel Grid.Row="0" Margin="16,12,16,8" LastChildFill="False">
+                        <ui:Button DockPanel.Dock="Left" Appearance="Primary" Command="{Binding AddUrlCommand}"
+                                   Content="Add URL" ToolTip="Add a download (Ctrl+N)" Padding="12,6">
+                            <ui:Button.Icon>
+                                <ui:SymbolIcon Symbol="Add24" />
+                            </ui:Button.Icon>
+                        </ui:Button>
+                        <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}" Margin="12,0,0,0" Command="{Binding ResumeCommand}" AutomationProperties.Name="Resume">
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Symbol="Play24" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Resume" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}" Margin="2,0,0,0" Command="{Binding PauseCommand}" AutomationProperties.Name="Pause">
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Symbol="Pause24" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Pause" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}" Margin="2,0,0,0" Command="{Binding DeleteCommand}" ToolTip="Delete the selected downloads (Del)" AutomationProperties.Name="Delete">
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Symbol="Delete24" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Delete" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Rectangle DockPanel.Dock="Left" Width="1" Height="20" Margin="10,0"
+                                   Fill="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                        <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}" Margin="0" Command="{Binding StartQueueCommand}" ToolTip="Start every queued download" AutomationProperties.Name="Start queue">
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Symbol="TextBulletListLtr24" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Start queue" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0" IsEnabled="False" ToolTip="Settings" AutomationProperties.Name="Settings">
+                            <ui:SymbolIcon Symbol="Settings24" FontSize="16" />
+                        </Button>
+                    </DockPanel>
+
+                    <!-- Column headers -->
+                    <Grid Grid.Row="1" Margin="24,4,28,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="{StaticResource ColIcon}" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="{StaticResource ColSize}" />
+                            <ColumnDefinition Width="{StaticResource ColProgress}" />
+                            <ColumnDefinition Width="{StaticResource ColSpeed}" />
+                            <ColumnDefinition Width="{StaticResource ColLeft}" />
+                            <ColumnDefinition Width="{StaticResource ColStatus}" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="1" Text="Name" Style="{StaticResource ColumnHeaderText}" />
+                        <TextBlock Grid.Column="2" Text="Size" Style="{StaticResource ColumnHeaderText}" TextAlignment="Right" />
+                        <TextBlock Grid.Column="3" Text="Progress" Style="{StaticResource ColumnHeaderText}" Margin="20,0,0,0" />
+                        <TextBlock Grid.Column="4" Text="Speed" Style="{StaticResource ColumnHeaderText}" TextAlignment="Right" />
+                        <TextBlock Grid.Column="5" Text="Time left" Style="{StaticResource ColumnHeaderText}" TextAlignment="Right" />
+                        <TextBlock Grid.Column="6" Text="Status" Style="{StaticResource ColumnHeaderText}" Margin="20,0,0,0" />
+                    </Grid>
+                    <Rectangle Grid.Row="1" Height="1" VerticalAlignment="Bottom" Margin="16,0"
+                               Fill="{DynamicResource DividerStrokeColorDefaultBrush}" />
+
+                    <!-- Downloads -->
+                    <ListView x:Name="List" Grid.Row="2" Style="{StaticResource BareList}" Padding="16,4,16,8"
+                              ItemsSource="{Binding View}" SelectionMode="Extended"
+                              ItemContainerStyle="{StaticResource DownloadRow}"
+                              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Pixel"
+                              SelectionChanged="OnSelectionChanged" MouseDoubleClick="OnRowDoubleClick"
+                              AutomationProperties.Name="Downloads">
+                        <ListView.InputBindings>
+                            <KeyBinding Key="Delete" Command="{Binding DeleteCommand}" />
+                            <KeyBinding Key="Enter" Command="{Binding OpenCommand}"
+                                        CommandParameter="{Binding SelectedItem, ElementName=List}" />
+                        </ListView.InputBindings>
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <ui:MenuItem Header="Open" Command="{Binding OpenCommand}" Icon="{ui:SymbolIcon Open24}"
+                                             CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                <ui:MenuItem Header="Show in folder" Command="{Binding ShowInFolderCommand}" Icon="{ui:SymbolIcon FolderOpen24}"
+                                             CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                <ui:MenuItem Header="Copy link" Command="{Binding CopyLinkCommand}" Icon="{ui:SymbolIcon Link24}"
+                                             CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                <Separator />
+                                <ui:MenuItem Header="Resume" Command="{Binding ResumeCommand}" Icon="{ui:SymbolIcon Play24}" />
+                                <ui:MenuItem Header="Pause" Command="{Binding PauseCommand}" Icon="{ui:SymbolIcon Pause24}" />
+                                <ui:MenuItem Header="Delete" Command="{Binding DeleteCommand}" Icon="{ui:SymbolIcon Delete24}" />
+                            </ContextMenu>
+                        </ListView.ContextMenu>
+                        <ListView.ItemTemplate>
+                            <DataTemplate DataType="vm:DownloadItemViewModel">
+                                <Grid x:Name="Row">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{StaticResource ColIcon}" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="{StaticResource ColSize}" />
+                                        <ColumnDefinition Width="{StaticResource ColProgress}" />
+                                        <ColumnDefinition Width="{StaticResource ColSpeed}" />
+                                        <ColumnDefinition Width="{StaticResource ColLeft}" />
+                                        <ColumnDefinition Width="{StaticResource ColStatus}" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Image Grid.Column="0" Source="{Binding Icon}" Width="16" Height="16"
+                                           HorizontalAlignment="Left" RenderOptions.BitmapScalingMode="HighQuality" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}" Style="{StaticResource BodyText}"
+                                               ToolTip="{Binding Info.Url}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding SizeText}" Style="{StaticResource NumberText}" />
+
+                                    <Grid Grid.Column="3" Margin="20,0,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="44" />
+                                        </Grid.ColumnDefinitions>
+                                        <controls:SegmentBar x:Name="Bar" Height="6" VerticalAlignment="Center"
+                                                             Segments="{Binding Segments}" Total="{Binding Total}"
+                                                             Fraction="{Binding Fraction}"
+                                                             Fill="{DynamicResource AccentFillColorDefaultBrush}"
+                                                             Track="{DynamicResource DividerStrokeColorDefaultBrush}"
+                                                             Gap="{DynamicResource ApplicationBackgroundBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding PercentText}" Style="{StaticResource NumberText}" />
+                                    </Grid>
+
+                                    <TextBlock Grid.Column="4" Text="{Binding SpeedText}" Style="{StaticResource NumberText}" />
+                                    <TextBlock Grid.Column="5" Text="{Binding RemainingText}" Style="{StaticResource NumberText}" />
+                                    <TextBlock x:Name="StatusLabel" Grid.Column="6" Margin="20,0,0,0" Text="{Binding StatusText}"
+                                               Style="{StaticResource BodyText}"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static model:DownloadStatus.Downloading}">
+                                        <Setter TargetName="StatusLabel" Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static model:DownloadStatus.Paused}">
+                                        <Setter TargetName="Bar" Property="Fill" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                        <Setter TargetName="StatusLabel" Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static model:DownloadStatus.Failed}">
+                                        <Setter TargetName="Bar" Property="Fill" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                        <Setter TargetName="StatusLabel" Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                        <Setter TargetName="StatusLabel" Property="ToolTip" Value="{Binding Error}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static model:DownloadStatus.Queued}">
+                                        <Setter TargetName="Bar" Property="Fill" Value="{DynamicResource TextFillColorDisabledBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static model:DownloadStatus.Completed}">
+                                        <Setter TargetName="Bar" Property="Fill" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <!-- Empty state -->
+                    <StackPanel Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,48"
+                                Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}"
+                                IsHitTestVisible="False">
+                        <TextBlock Text="{Binding EmptyTitle}" Style="{StaticResource SubtitleText}" HorizontalAlignment="Center" />
+                        <TextBlock Text="{Binding EmptyHint}" Style="{StaticResource BodyText}" Margin="0,6,0,0"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Status line -->
+                    <DockPanel Grid.Row="3" Margin="24,6,28,10">
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding TotalSpeed}" Style="{StaticResource NumberText}"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding StatusLine}" Style="{StaticResource CaptionText}" />
+                    </DockPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</ui:FluentWindow>
