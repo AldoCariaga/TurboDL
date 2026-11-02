@@ -43,6 +43,15 @@ public sealed partial class DownloadItemViewModel : ObservableObject
     [ObservableProperty] public partial string StatusText { get; private set; } = "";
     [ObservableProperty] public partial string? Error { get; private set; }
 
+    /// <summary>Engine messages (retries, splits) for the Details window; newest last, capped.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<string> Log { get; } = [];
+
+    internal void AddLog(string message)
+    {
+        Log.Add($"{DateTime.Now:HH:mm:ss}  {message}");
+        while (Log.Count > 200) Log.RemoveAt(0);
+    }
+
     public bool IsRunning => Task is not null;
     public bool CanResume => !IsRunning && Status is DownloadStatus.Paused or DownloadStatus.Failed or DownloadStatus.Queued;
     public bool CanPause => IsRunning;
