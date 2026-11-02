@@ -5,6 +5,7 @@
     <Project Path="src/TurboDL.NativeHost/TurboDL.NativeHost.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/FakeYtDlp/FakeYtDlp.csproj" />
     <Project Path="tests/TurboDL.Core.Tests/TurboDL.Core.Tests.csproj" />
   </Folder>
 </Solution>

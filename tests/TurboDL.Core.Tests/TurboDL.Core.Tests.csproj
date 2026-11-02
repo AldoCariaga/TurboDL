@@ -25,6 +25,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\TurboDL.Core\TurboDL.Core.csproj" />
     <ProjectReference Include="..\..\src\TurboDL.NativeHost\TurboDL.NativeHost.csproj" />
+    <!-- The fake yt-dlp.exe the video tests run; its exe, dll and runtimeconfig land next to the tests. -->
+    <ProjectReference Include="..\FakeYtDlp\FakeYtDlp.csproj" />
   </ItemGroup>
 
 </Project>
