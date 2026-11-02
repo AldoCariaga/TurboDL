@@ -116,17 +116,98 @@
     return Object.prototype.hasOwnProperty.call(MIME_EXTENSIONS, type) ? MIME_EXTENSIONS[type] : "";
   }
 
-  // Possible file types of a download item. Chrome's chosen file name is authoritative when known;
-  // until then, both the URL path's extension and the MIME type are hints, and either may match.
+  // Decodes %XX escapes, or returns the text unchanged when it isn't valid percent-encoding.
+  function tryDecode(text) {
+    try {
+      return decodeURIComponent(text);
+    } catch {
+      return text;
+    }
+  }
+
+  // File name from a Content-Disposition value, e.g.
+  //   attachment; filename*=UTF-8''na%C3%AFve%20file.zip   (RFC 6266/5987; preferred)
+  //   attachment; filename="a b.zip"   or   attachment; filename=a.zip
+  // Returns only the base name (no directories), or "".
+  function fileNameFromDisposition(value) {
+    if (typeof value !== "string" || !value) return "";
+    const star = /(?:^|;)\s*filename\*\s*=\s*([^']*)'[^']*'([^;]+)/i.exec(value);
+    if (star) {
+      const name = baseName(tryDecode(star[2].trim().replace(/^"(.*)"$/, "$1")));
+      if (name) return name;
+    }
+    const plain = /(?:^|;)\s*filename\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]+))/i.exec(value);
+    if (!plain) return "";
+    const raw = plain[1] !== undefined ? plain[1].replace(/\\(.)/g, "$1") : plain[2].trim();
+    return baseName(/%[0-9a-f]{2}/i.test(raw) ? tryDecode(raw) : raw);
+  }
+
+  // Query parameters that signed download URLs (S3, Azure, GitHub release assets, CDNs) use to
+  // carry the file name the server will send.
+  const DISPOSITION_PARAMS = ["response-content-disposition", "rscd"];
+  const FILENAME_PARAMS = ["filename"];
+
+  // File name hinted by a URL's query string, or "".
+  function fileNameFromQuery(url) {
+    let params;
+    try {
+      params = new URL(url).searchParams; // already percent-decoded once, "+" becomes a space
+    } catch {
+      return "";
+    }
+    const byName = new Map();
+    for (const [key, value] of params) {
+      const k = key.toLowerCase();
+      if (!byName.has(k)) byName.set(k, value);
+    }
+    for (const key of DISPOSITION_PARAMS) {
+      const name = fileNameFromDisposition(byName.get(key));
+      if (name) return name;
+    }
+    for (const key of FILENAME_PARAMS) {
+      const value = byName.get(key);
+      if (value) {
+        const name = baseName(value.trim());
+        if (name) return name;
+      }
+    }
+    return "";
+  }
+
+  // The URL TurboDL is given: the ORIGINAL item.url when it is http(s) (TurboDL follows redirects itself,
+  // so a resume gets a fresh signed URL), else finalUrl when that is. "" for blob:, data:, file:, ...
+  function downloadUrl(item) {
+    if (!item) return "";
+    if (isHttpUrl(item.url)) return item.url;
+    if (isHttpUrl(item.finalUrl)) return item.finalUrl;
+    return "";
+  }
+
+  // Name for the `add` message: Chrome's chosen name when known, else a name the URLs carry in their query
+  // string (redirect target first, since that is what the server answers with). "" lets the app work it out.
+  function suggestedFileName(item) {
+    if (!item) return "";
+    return baseName(item.filename) || fileNameFromQuery(item.finalUrl) || fileNameFromQuery(item.url) || "";
+  }
+
+  // Possible file types of a download item. Chrome's chosen file name is authoritative when known.
+  // Until then every hint counts: the path extension of url and of finalUrl, a file name in either URL's
+  // query string, and the MIME type.
   function fileTypeCandidates(item) {
     if (!item) return [];
-    const fromName = extensionOf(baseName(item.filename));
-    if (baseName(item.filename)) return fromName ? [fromName] : [];
+    if (baseName(item.filename)) {
+      const fromName = extensionOf(item.filename);
+      return fromName ? [fromName] : [];
+    }
+    const hints = [
+      extensionOf(nameFromUrl(item.url || "")),
+      extensionOf(nameFromUrl(item.finalUrl || "")),
+      extensionOf(fileNameFromQuery(item.finalUrl)),
+      extensionOf(fileNameFromQuery(item.url)),
+      extensionFromMime(item.mime),
+    ];
     const out = [];
-    const fromUrl = extensionOf(nameFromUrl(item.finalUrl || item.url || ""));
-    const fromMime = extensionFromMime(item.mime);
-    if (fromUrl) out.push(fromUrl);
-    if (fromMime && !out.includes(fromMime)) out.push(fromMime);
+    for (const ext of hints) if (ext && !out.includes(ext)) out.push(ext);
     return out;
   }
 
@@ -143,8 +224,7 @@
   // config: { catchExtensions: [...], minCatchSizeKB } or null (no config -> catch nothing).
   function shouldCatch(item, config) {
     if (!item || !config) return false;
-    const url = item.finalUrl || item.url;
-    if (!isHttpUrl(url)) return false;
+    if (!downloadUrl(item)) return false;
     const exts = normalizeExtensions(config.catchExtensions);
     if (exts.length === 0) return false;
     if (!fileTypeCandidates(item).some((ext) => exts.includes(ext))) return false;
@@ -213,6 +293,10 @@
     MIME_EXTENSIONS,
     extensionFromMime,
     fileTypeCandidates,
+    fileNameFromDisposition,
+    fileNameFromQuery,
+    downloadUrl,
+    suggestedFileName,
     downloadSize,
     shouldCatch,
     buildCookieHeader,

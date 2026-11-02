@@ -12,7 +12,8 @@ importScripts("lib.js");
 const {
   HOST_NAME,
   isHttpUrl,
-  baseName,
+  downloadUrl,
+  suggestedFileName,
   downloadSize,
   shouldCatch,
   buildCookieHeader,
@@ -129,8 +130,10 @@ async function handleCreated(item) {
   }
   if (item.state && item.state !== "in_progress") return;
 
-  const url = item.finalUrl || item.url;
-  if (!isHttpUrl(url)) return; // blob:, data:, file:, ftp:, chrome: ... stay in Chrome
+  // The original URL, not the redirect target: TurboDL follows redirects itself, so a resume
+  // gets a fresh signed URL. "" for blob:, data:, file:, ftp:, chrome: ..., which stay in Chrome.
+  const url = downloadUrl(item);
+  if (!url) return;
   if (await takeBypass([item.url, item.finalUrl])) return;
 
   const { catching, config } = await getLocal();
@@ -149,8 +152,8 @@ async function handleCreated(item) {
 
   const message = buildAddMessage({
     url,
-    // Only Chrome's final name; when it isn't known yet the app works it out from the server.
-    filename: baseName(item.filename),
+    // Chrome's name, else one from a signed URL's content-disposition parameter; else the app asks the server.
+    filename: suggestedFileName(item),
     referrer: item.referrer,
     userAgent: navigator.userAgent,
     cookies: await cookieHeader(url),
@@ -159,7 +162,7 @@ async function handleCreated(item) {
 
   // Caught downloads go back to Chrome when TurboDL can't take them.
   const { reply } = await callHost(message);
-  if (!reply) await downloadInChrome(item.url || url);
+  if (!reply) await downloadInChrome(url);
 }
 
 chrome.downloads.onCreated.addListener((item) => {

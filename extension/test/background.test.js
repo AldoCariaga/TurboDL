@@ -191,12 +191,12 @@ test("matching download is cancelled, erased and sent with cookies, referrer and
   assert.equal(b.calls.download.length, 0, "no fallback when the host accepts it");
 });
 
-test("finalUrl is sent and Chrome's file name is passed when known", async () => {
+test("the original URL is sent and Chrome's file name is passed when known", async () => {
   const b = await installed({ host: hostWith(goodConfig) });
   b.chrome.downloads.onCreated.fire(download({ url: "https://e/get?id=1", finalUrl: "https://cdn.e/x.zip", filename: "C:\\Users\\u\\Downloads\\x.zip" }));
   await flush();
   const msg = b.calls.native.at(-1).msg;
-  assert.equal(msg.url, "https://cdn.e/x.zip");
+  assert.equal(msg.url, "https://e/get?id=1");
   assert.equal(msg.filename, "x.zip");
   assert.equal(msg.size, undefined, "unknown size is left out");
 });
@@ -377,4 +377,66 @@ test("popup refresh message replies with the result", async () => {
   assert.deepEqual(plain(reply), { ok: true });
   const ignored = b.chrome.runtime.onMessage.listeners[0]({ type: "refreshConfig" }, { id: "someone-else" }, () => {});
   assert.equal(ignored, false, "messages from other senders are ignored");
+});
+
+// A real onCreated item from a Chrome test (7-Zip link -> GitHub release asset). The pasted finalUrl
+// was elided, so its path id and signature values are placeholders; the rscd, rsct,
+// response-content-disposition and response-content-type parameters are as pasted.
+const GITHUB_ITEM = {
+  id: 42,
+  url: "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-x64.exe",
+  finalUrl:
+    "https://release-assets.githubusercontent.com/github-production-release-asset/466446150/c648a1d2-0000-4000-8000-000000000000" +
+    "?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-11-03T06%3A10%3A00Z" +
+    "&rscd=attachment%3B+filename%3D7z2605-x64.exe&rsct=application%2Foctet-stream" +
+    "&skoid=96c2d410-5711-43a1-aedd-ab1947aa7ab0&sig=abc%2Fdef%3D" +
+    "&jwt=eyJ0eXAiOiJKV1QifQ.e30.sig" +
+    "&response-content-disposition=attachment%3B%20filename%3D7z2605-x64.exe&response-content-type=application%2Foctet-stream",
+  filename: "",
+  mime: "application/octet-stream",
+  totalBytes: 1663506,
+  fileSize: 1663506,
+  state: "in_progress",
+  danger: "safe",
+  referrer: "https://www.7-zip.org/",
+};
+
+test("F1: the real GitHub redirect is caught and sent with the github.com URL and the asset name", async () => {
+  const cookies = [{ name: "logged_in", value: "no", path: "/" }];
+  const b = await installed({ host: hostWith({ ok: true, catchExtensions: ["zip", "exe"], minCatchSizeKB: 0 }), cookies });
+  b.chrome.downloads.onCreated.fire({ ...GITHUB_ITEM });
+  await flush();
+  assert.deepEqual(b.calls.cancel, [42]);
+  assert.deepEqual(b.calls.erase, [{ id: 42 }]);
+  assert.equal(b.calls.cookiesFor, GITHUB_ITEM.url, "cookies for the URL that is sent");
+  assert.deepEqual(b.calls.native.at(-1).msg, {
+    type: "add",
+    url: "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-x64.exe",
+    filename: "7z2605-x64.exe",
+    referrer: "https://www.7-zip.org/",
+    userAgent: UA,
+    cookies: "logged_in=no",
+    size: 1663506,
+  });
+});
+
+test("F1: a failed redirect download goes back to Chrome by its original URL, and isn't re-caught", async () => {
+  const b = await installed({ host: hostWith({ ok: true, catchExtensions: ["exe"], minCatchSizeKB: 0 }, () => ({ ok: false, error: "x" })) });
+  b.markExtensionDownloads = false; // rely on the URL guard alone
+  b.chrome.downloads.onCreated.fire({ ...GITHUB_ITEM });
+  await flush();
+  assert.deepEqual(b.calls.download, [{ url: GITHUB_ITEM.url }]);
+  assert.deepEqual(b.calls.cancel, [42], "the fallback wasn't caught");
+});
+
+test("F1: the loop guard also matches when Chrome reports the fallback by its redirect target", async () => {
+  const b = await installed({ host: hostWith({ ok: true, catchExtensions: ["exe"], minCatchSizeKB: 0 }, () => ({ ok: false })) });
+  b.echoDownloads = false;
+  b.chrome.downloads.onCreated.fire({ ...GITHUB_ITEM });
+  await flush();
+  assert.equal(b.persist.session.bypass.length, 1);
+  // The fallback shows up with url = the redirect target this time (url and finalUrl both checked).
+  b.chrome.downloads.onCreated.fire({ ...GITHUB_ITEM, id: 43, url: "https://other/redirect", finalUrl: GITHUB_ITEM.url });
+  await flush();
+  assert.deepEqual(b.calls.cancel, [42]);
 });

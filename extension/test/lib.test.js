@@ -187,3 +187,111 @@ test("buildAddMessage leaves out empty optional fields", () => {
   );
   assert.deepEqual(lib.buildAddMessage({ url: "u", filename: "", referrer: "", cookies: "", size: -1 }), { type: "add", url: "u" });
 });
+
+// A real onCreated item from a Chrome test (7-Zip link -> GitHub release asset). The pasted finalUrl
+// was elided, so its path id and signature values are placeholders; the rscd, rsct,
+// response-content-disposition and response-content-type parameters are as pasted.
+const GITHUB_ITEM = {
+  id: 42,
+  url: "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-x64.exe",
+  finalUrl:
+    "https://release-assets.githubusercontent.com/github-production-release-asset/466446150/c648a1d2-0000-4000-8000-000000000000" +
+    "?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-11-03T06%3A10%3A00Z" +
+    "&rscd=attachment%3B+filename%3D7z2605-x64.exe&rsct=application%2Foctet-stream" +
+    "&skoid=96c2d410-5711-43a1-aedd-ab1947aa7ab0&sig=abc%2Fdef%3D" +
+    "&jwt=eyJ0eXAiOiJKV1QifQ.e30.sig" +
+    "&response-content-disposition=attachment%3B%20filename%3D7z2605-x64.exe&response-content-type=application%2Foctet-stream",
+  filename: "",
+  mime: "application/octet-stream",
+  totalBytes: 1663506,
+  fileSize: 1663506,
+  state: "in_progress",
+  danger: "safe",
+  referrer: "https://www.7-zip.org/",
+};
+
+const realConfig = { catchExtensions: "zip rar 7z tar gz iso exe msi msix apk mp4 mkv webm avi mov mp3 flac m4a wav pdf epub".split(" "), minCatchSizeKB: 0 };
+
+test("F1: the real GitHub release redirect is caught, with the original URL and the asset's name", () => {
+  assert.equal(lib.shouldCatch(GITHUB_ITEM, realConfig), true);
+  assert.equal(lib.downloadUrl(GITHUB_ITEM), "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-x64.exe");
+  assert.equal(lib.suggestedFileName(GITHUB_ITEM), "7z2605-x64.exe");
+  assert.ok(lib.fileTypeCandidates(GITHUB_ITEM).includes("exe"));
+});
+
+test("fileNameFromDisposition", () => {
+  assert.equal(lib.fileNameFromDisposition('attachment; filename="a b.zip"'), "a b.zip");
+  assert.equal(lib.fileNameFromDisposition('attachment;filename="a b.zip"'), "a b.zip");
+  assert.equal(lib.fileNameFromDisposition("attachment; filename=plain.exe"), "plain.exe");
+  assert.equal(lib.fileNameFromDisposition("attachment; filename=plain.exe; size=10"), "plain.exe");
+  assert.equal(lib.fileNameFromDisposition("attachment; filename*=UTF-8''na%C3%AFve%20file.zip"), "na\u00efve file.zip");
+  assert.equal(lib.fileNameFromDisposition("attachment; filename*=utf-8'en'%E2%82%AC%20rates.pdf"), "\u20ac rates.pdf");
+  assert.equal(
+    lib.fileNameFromDisposition("attachment; filename=\"fallback.zip\"; filename*=UTF-8''r%C3%A9el.zip"),
+    "r\u00e9el.zip", "filename* wins over filename"
+  );
+  assert.equal(lib.fileNameFromDisposition('attachment; filename="say \\"hi\\".txt"'), 'say "hi".txt', "escaped quotes");
+  assert.equal(lib.fileNameFromDisposition('attachment; filename="My%20Movie.mp4"'), "My Movie.mp4", "percent-encoded plain name");
+  assert.equal(lib.fileNameFromDisposition('attachment; filename="100%.zip"'), "100%.zip", "a literal % is kept");
+  assert.equal(lib.fileNameFromDisposition('attachment; filename="../../evil.exe"'), "evil.exe", "no directories");
+  assert.equal(lib.fileNameFromDisposition('attachment; filename="..\\..\\evil.exe"'), "....evil.exe", "backslash is a quoted-pair escape (RFC 6266), so no path is left");
+  assert.equal(lib.fileNameFromDisposition("attachment; filename=C:\\temp\\evil.exe"), "evil.exe", "unquoted Windows path");
+  assert.equal(lib.fileNameFromDisposition("attachment; filename=../../etc/x.zip"), "x.zip");
+  assert.equal(lib.fileNameFromDisposition("inline"), "");
+  assert.equal(lib.fileNameFromDisposition("attachment; name=x.zip"), "", "name= is not filename=");
+  assert.equal(lib.fileNameFromDisposition(""), "");
+  assert.equal(lib.fileNameFromDisposition(undefined), "");
+});
+
+test("fileNameFromQuery: S3, Azure (rscd) and filename= parameters", () => {
+  // S3 presigned URL as a browser sends it: the value is percent-encoded once
+  assert.equal(
+    lib.fileNameFromQuery("https://bucket.s3.amazonaws.com/k/obj?X-Amz-Signature=x&response-content-disposition=attachment%3Bfilename%3D%22a%20b.zip%22"),
+    "a b.zip"
+  );
+  assert.equal(lib.fileNameFromQuery('https://s3/k?response-content-disposition=attachment;filename="a b.zip"'), "a b.zip", "unencoded");
+  assert.equal(lib.fileNameFromQuery("https://acct.blob.core.windows.net/c/b?sig=x&rscd=attachment%3B+filename%3Dsetup.msi"), "setup.msi");
+  assert.equal(
+    lib.fileNameFromQuery("https://cdn/x?response-content-disposition=attachment%3B%20filename%2A%3DUTF-8%27%27r%25C3%25A9sum%25C3%25A9.pdf"),
+    "r\u00e9sum\u00e9.pdf", "filename*= inside the parameter"
+  );
+  assert.equal(lib.fileNameFromQuery("https://cdn/x?Response-Content-Disposition=attachment%3Bfilename%3Dcase.zip"), "case.zip", "case-insensitive key");
+  assert.equal(lib.fileNameFromQuery("https://cdn/dl?id=4&filename=report.pdf"), "report.pdf");
+  assert.equal(lib.fileNameFromQuery("https://cdn/dl?filename=dir%2Fsub%2Fdeep.zip"), "deep.zip");
+  assert.equal(lib.fileNameFromQuery("https://cdn/dl?file=12345"), "", "file= is not used");
+  assert.equal(lib.fileNameFromQuery("https://cdn/dl?id=4"), "");
+  assert.equal(lib.fileNameFromQuery("not a url"), "");
+  assert.equal(lib.fileNameFromQuery(undefined), "");
+});
+
+test("downloadUrl prefers the original http(s) URL", () => {
+  assert.equal(lib.downloadUrl({ url: "https://a/x.exe", finalUrl: "https://cdn/signed?sig=1" }), "https://a/x.exe");
+  assert.equal(lib.downloadUrl({ url: "blob:https://a/1", finalUrl: "https://cdn/f.zip" }), "https://cdn/f.zip");
+  assert.equal(lib.downloadUrl({ url: "https://a/x.exe" }), "https://a/x.exe");
+  assert.equal(lib.downloadUrl({ url: "blob:https://a/1", finalUrl: "blob:https://a/1" }), "");
+  assert.equal(lib.downloadUrl({ url: "data:application/zip;base64,AA==", finalUrl: "" }), "");
+  assert.equal(lib.downloadUrl(null), "");
+});
+
+test("suggestedFileName: Chrome's name, then the query hints, else empty", () => {
+  assert.equal(lib.suggestedFileName({ filename: "C:\\dl\\chosen.zip", finalUrl: "https://c/x?filename=other.zip" }), "chosen.zip");
+  assert.equal(lib.suggestedFileName({ filename: "", url: "https://a/r", finalUrl: "https://c/x?rscd=attachment%3B+filename%3Dfinal.zip" }), "final.zip");
+  assert.equal(lib.suggestedFileName({ filename: "", url: "https://a/r?filename=from-url.zip", finalUrl: "https://c/x" }), "from-url.zip");
+  assert.equal(lib.suggestedFileName({ filename: "", url: "https://a/files/setup.exe", finalUrl: "https://a/files/setup.exe" }), "", "path names are left to the app");
+  assert.equal(lib.suggestedFileName(null), "");
+});
+
+test("shouldCatch: redirect hints", () => {
+  // only the original url has the extension (finalUrl is an opaque signed path)
+  assert.equal(lib.shouldCatch({ url: "https://site/get/tool.zip", finalUrl: "https://cdn/obj/9f8e7d?sig=x", filename: "", mime: "application/octet-stream" }, config), true);
+  // only finalUrl's query names the file
+  assert.equal(lib.shouldCatch({ url: "https://site/dl/77", finalUrl: "https://bucket.s3/k?response-content-disposition=attachment%3B%20filename%3D%22a%20b.zip%22", filename: "" }, config), true);
+  assert.equal(lib.shouldCatch({ url: "https://site/dl/77", finalUrl: "https://blob/c?rscd=attachment%3B+filename%3Dsetup.exe", filename: "" }, config), true);
+  assert.equal(lib.shouldCatch({ url: "https://site/dl/77", finalUrl: "https://cdn/x?response-content-disposition=attachment%3B%20filename%2A%3DUTF-8%27%27f%25C3%25BCr.zip", filename: "" }, config), true);
+  // the query names a type that isn't in the list
+  assert.equal(lib.shouldCatch({ url: "https://site/dl/77", finalUrl: "https://cdn/x?rscd=attachment%3B+filename%3Dnotes.txt", filename: "" }, config), false);
+  // Chrome's known name still beats every hint
+  assert.equal(lib.shouldCatch({ url: "https://site/a.zip", finalUrl: "https://cdn/x?filename=a.zip", filename: "C:\\dl\\a.txt" }, config), false);
+  // negative: plain octet-stream with no hints anywhere
+  assert.equal(lib.shouldCatch({ url: "https://site/download?id=5", finalUrl: "https://cdn/obj/abc?sig=1", filename: "", mime: "application/octet-stream", totalBytes: 5e6 }, config), false);
+});
