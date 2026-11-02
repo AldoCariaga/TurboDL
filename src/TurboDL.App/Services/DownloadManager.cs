@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Net.Http;
+using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
 using TurboDL.Core.Engine;
 using TurboDL.Core.Model;
@@ -27,12 +28,17 @@ public sealed class DownloadManager(
     IUserPrompts prompts,
     ILogger<DownloadManager> log)
 {
+    private readonly Dispatcher _ui = Dispatcher.CurrentDispatcher;
+
     public ObservableCollection<DownloadItemViewModel> Items { get; } = [];
 
     public HttpClient Http => http;
 
     /// <summary>Raised on the UI thread when a download finishes. Hook for the tray toast.</summary>
     public event Action<DownloadItemViewModel>? Completed;
+
+    /// <summary>Raised on the UI thread whenever a run ends: finished, paused or failed. The queue listens to this.</summary>
+    public event Action<DownloadItemViewModel>? Ended;
 
     /// <summary>
     /// Loads the saved list. Anything still marked Downloading was running when the app last closed (or crashed),
@@ -55,8 +61,8 @@ public sealed class DownloadManager(
         info.Status = DownloadStatus.Queued;
         store.Add(info);
         var item = new DownloadItemViewModel(info);
+        if (startNow) Start(item); // before it joins the list, so the queue never mistakes it for a waiting one
         Items.Add(item);
-        if (startNow) Start(item);
         return item;
     }
 
@@ -69,13 +75,21 @@ public sealed class DownloadManager(
 
     public void Pause(DownloadItemViewModel item) => item.Cts?.Cancel();
 
-    /// <summary>
-    /// Starts everything waiting in the queue. The queue manager will replace this with "N at a time" plus the scheduler.
-    /// </summary>
-    public void StartQueue()
+    /// <summary>Puts a stopped download back in the queue so it starts again when the queue does.</summary>
+    public void Requeue(DownloadItemViewModel item)
     {
-        foreach (var item in Items.Where(i => i.Status == DownloadStatus.Queued).ToList())
-            Start(item);
+        if (item.IsRunning || item.Info.Status == DownloadStatus.Completed) return;
+        item.Info.Status = DownloadStatus.Queued;
+        store.Save(item.Info);
+        item.Refresh();
+    }
+
+    /// <summary>This download's own cap in bytes/second (0 = none). Applies at once if it is running.</summary>
+    public void SetSpeedLimit(DownloadItemViewModel item, long bytesPerSecond)
+    {
+        if (item.Task is { } task) task.SetSpeedLimit(bytesPerSecond);
+        else item.Info.SpeedLimit = bytesPerSecond > 0 ? bytesPerSecond : null;
+        store.Save(item.Info);
     }
 
     /// <summary>Removes downloads from the list. Partial files always go; finished files go to the Recycle Bin when asked.</summary>
@@ -120,7 +134,11 @@ public sealed class DownloadManager(
         var info = item.Info;
         var task = new DownloadTask(info, http, globalLimiter: globalLimiter);
         task.Checkpoint += store.Save; // background thread; Save is thread-safe
-        task.Log += message => log.LogDebug("[{Id}] {Message}", info.Id, message);
+        task.Log += message =>
+        {
+            log.LogDebug("[{Id}] {Message}", info.Id, message);
+            _ui.BeginInvoke(() => item.AddLog(message));
+        };
 
         var cts = new CancellationTokenSource();
         // Off the UI thread: the engine doesn't use ConfigureAwait(false), so its I/O would otherwise run here.
@@ -147,6 +165,8 @@ public sealed class DownloadManager(
             item.Detach();
         }
 
+        if (error is not null) item.AddLog(error.GetBaseException().Message);
+        Ended?.Invoke(item);
         if (info.Status == DownloadStatus.Completed)
             Completed?.Invoke(item);
         else if (error is RemoteFileChangedException && await prompts.ConfirmRestartAsync(info.FileName))
