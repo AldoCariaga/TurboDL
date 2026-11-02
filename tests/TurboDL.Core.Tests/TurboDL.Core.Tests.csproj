@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TurboDL.Core\TurboDL.Core.csproj" />
+    <ProjectReference Include="..\..\src\TurboDL.NativeHost\TurboDL.NativeHost.csproj" />
   </ItemGroup>
 
 </Project>
