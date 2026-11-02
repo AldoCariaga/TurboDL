@@ -16,7 +16,7 @@ public partial class DetailsWindow : FluentWindow
         _vm = vm;
         DataContext = vm;
         InitializeComponent();
-        Icon = AppIcon.Render(32);
+        Icon = AppIcon.Window;
 
         vm.Item.PropertyChanged += OnItemChanged;
         Closed += (_, _) =>

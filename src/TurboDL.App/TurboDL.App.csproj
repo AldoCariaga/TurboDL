@@ -18,6 +18,11 @@
     <UseWPF>true</UseWPF>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyTitle>TurboDL</AssemblyTitle>
+    <ApplicationIcon>..\..\assets\TurboDL.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="..\..\assets\TurboDL.ico" Link="Assets\TurboDL.ico" />
+  </ItemGroup>
 
 </Project>

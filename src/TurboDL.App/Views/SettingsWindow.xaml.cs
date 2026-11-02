@@ -10,7 +10,7 @@ public partial class SettingsWindow : FluentWindow
     {
         DataContext = vm;
         InitializeComponent();
-        Icon = AppIcon.Render(32);
+        Icon = AppIcon.Window;
         vm.CloseRequested += Close;
         Closed += (_, _) => vm.CloseRequested -= Close;
     }

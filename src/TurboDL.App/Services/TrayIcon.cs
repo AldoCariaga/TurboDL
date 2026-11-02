@@ -17,7 +17,8 @@ public sealed partial class TrayIcon : IDisposable
 
     private readonly HwndSource _window;
     private readonly int _taskbarCreated = RegisterWindowMessage("TaskbarCreated");
-    private nint _icon;
+    private nint _icon;      // small icon, for the notification area
+    private nint _largeIcon; // large icon, for notifications
     private string _tooltip = "TurboDL";
     private bool _added;
 
@@ -26,7 +27,7 @@ public sealed partial class TrayIcon : IDisposable
         // An invisible top-level window: it receives the icon's callbacks and the TaskbarCreated broadcast.
         _window = new HwndSource(new HwndSourceParameters("TurboDL tray") { Width = 0, Height = 0, WindowStyle = 0 });
         _window.AddHook(WndProc);
-        _icon = AppIcon.CreateHIcon(32);
+        LoadIcons();
     }
 
     public ContextMenu? Menu { get; set; }
@@ -66,7 +67,7 @@ public sealed partial class TrayIcon : IDisposable
         data.szInfoTitle = title.Length > 63 ? title[..63] : title;
         data.szInfo = message.Length > 255 ? message[..255] : message;
         data.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON;
-        data.hBalloonIcon = _icon;
+        data.hBalloonIcon = _largeIcon;
         Shell_NotifyIcon(NIM_MODIFY, ref data);
     }
 
@@ -81,7 +82,20 @@ public sealed partial class TrayIcon : IDisposable
         _window.RemoveHook(WndProc);
         _window.Dispose();
         AppIcon.Destroy(_icon);
-        _icon = 0;
+        AppIcon.Destroy(_largeIcon);
+        _icon = _largeIcon = 0;
+    }
+
+    /// <summary>Loads the icons at the sizes Windows uses for the current DPI (16 px small at 100%, 24 at 150%, ...).</summary>
+    private void LoadIcons()
+    {
+        var dpi = GetDpiForWindow(_window.Handle);
+        var small = AppIcon.CreateHIcon(GetSystemMetricsForDpi(SM_CXSMICON, dpi));
+        var large = AppIcon.CreateHIcon(GetSystemMetricsForDpi(SM_CXICON, dpi));
+        AppIcon.Destroy(_icon);
+        AppIcon.Destroy(_largeIcon);
+        _icon = small;
+        _largeIcon = large;
     }
 
     private NOTIFYICONDATAW NewData(uint flags) => new()
@@ -101,7 +115,14 @@ public sealed partial class TrayIcon : IDisposable
     {
         if (msg == _taskbarCreated && _taskbarCreated != 0)
         {
-            Show(); // Explorer restarted; the icon has to be added again
+            // Explorer restarted (the icon has to be added again) or the DPI changed (the icon needs another size).
+            LoadIcons();
+            Show();
+            if (!_added)
+            {
+                var data = NewData(NIF_ICON);
+                _added = Shell_NotifyIcon(NIM_MODIFY, ref data);
+            }
         }
         else if (msg == CallbackMessage)
         {
@@ -142,6 +163,7 @@ public sealed partial class TrayIcon : IDisposable
     private const uint NOTIFYICON_VERSION_4 = 4;
     private const int WM_CONTEXTMENU = 0x7B, WM_LBUTTONUP = 0x202, WM_RBUTTONUP = 0x205;
     private const int NIN_SELECT = 0x400, NIN_KEYSELECT = 0x401, NIN_BALLOONUSERCLICK = 0x405;
+    private const int SM_CXICON = 11, SM_CXSMICON = 49;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NOTIFYICONDATAW
@@ -172,4 +194,10 @@ public sealed partial class TrayIcon : IDisposable
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetForegroundWindow(nint hWnd);
+
+    [LibraryImport("user32.dll")]
+    private static partial uint GetDpiForWindow(nint hwnd);
+
+    [LibraryImport("user32.dll")]
+    private static partial int GetSystemMetricsForDpi(int nIndex, uint dpi);
 }

@@ -17,7 +17,7 @@ public partial class MainWindow : FluentWindow
         _vm = vm;
         DataContext = vm;
         InitializeComponent();
-        Icon = AppIcon.Render(32);
+        Icon = AppIcon.Window;
 
         // The handle exists even while the window stays hidden in the tray, so the clipboard listener
         // and theme changes work from startup.
