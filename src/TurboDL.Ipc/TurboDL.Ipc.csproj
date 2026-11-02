@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The pipe between TurboDL and its native messaging host, and Chrome's framing. No package dependencies, so the
+       host can ship without the app's (SQLite). The namespace stays TurboDL.Core.Ipc. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TurboDL.Core.Ipc</RootNamespace>
+  </PropertyGroup>
+
+</Project>

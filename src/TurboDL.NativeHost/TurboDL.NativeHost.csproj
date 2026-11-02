@@ -8,8 +8,9 @@
     <AssemblyTitle>TurboDL native messaging host</AssemblyTitle>
   </PropertyGroup>
 
+  <!-- Only the pipe library: the host must not drag in Core's SQLite. -->
   <ItemGroup>
-    <ProjectReference Include="..\TurboDL.Core\TurboDL.Core.csproj" />
+    <ProjectReference Include="..\TurboDL.Ipc\TurboDL.Ipc.csproj" />
   </ItemGroup>
 
 </Project>

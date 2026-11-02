@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/TurboDL.App/TurboDL.App.csproj" />
     <Project Path="src/TurboDL.Core/TurboDL.Core.csproj" />
+    <Project Path="src/TurboDL.Ipc/TurboDL.Ipc.csproj" />
     <Project Path="src/TurboDL.NativeHost/TurboDL.NativeHost.csproj" />
   </Folder>
   <Folder Name="/tests/">
