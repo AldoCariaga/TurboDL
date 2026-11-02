@@ -12,7 +12,8 @@ namespace TurboDL.App.ViewModels;
 
 public enum NoteKind { Neutral, Warning, Error }
 
-public sealed partial class AddDownloadViewModel(DownloadManager manager, CategoryRules rules) : ObservableObject
+public sealed partial class AddDownloadViewModel(DownloadManager manager, CategoryRules rules, SettingsService settings)
+    : ObservableObject
 {
     private CancellationTokenSource? _probeCts;
     private bool _nameEdited;
@@ -48,6 +49,7 @@ public sealed partial class AddDownloadViewModel(DownloadManager manager, Catego
     public void Prefill(string? url, IReadOnlyDictionary<string, string>? headers)
     {
         _headers = headers ?? new Dictionary<string, string>();
+        Connections = settings.Current.DefaultConnections;
         Url = url ?? ClipboardLink() ?? "";
         if (Url.Length == 0) UpdateFolder();
     }

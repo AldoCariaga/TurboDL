@@ -1,0 +1,304 @@
+<ui:FluentWindow x:Class="TurboDL.App.Views.SettingsWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:vm="clr-namespace:TurboDL.App.ViewModels"
+                 mc:Ignorable="d"
+                 d:DataContext="{d:DesignInstance vm:SettingsViewModel}"
+                 Title="Settings"
+                 Width="760" Height="800" MinWidth="600" MinHeight="500"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowBackdropType="Mica"
+                 WindowCornerPreference="Round"
+                 FontFamily="{StaticResource TextFont}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="Settings" ShowMinimize="False" />
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,0,24,24">
+            <StackPanel>
+                <TextBlock Text="Settings" Style="{StaticResource SubtitleText}" FontSize="{StaticResource TitleSize}"
+                           Margin="0,0,0,0" />
+
+                <!-- Downloads -->
+                <TextBlock Text="Downloads" Style="{StaticResource SectionHeading}" />
+                <Border Style="{StaticResource SettingRow}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="Download folder" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="Each category gets its own folder inside this one." Style="{StaticResource SettingHelp}" />
+                            <ui:TextBox Text="{Binding DownloadFolder, UpdateSourceTrigger=PropertyChanged}" Margin="0,8,0,0"
+                                        AutomationProperties.Name="Download folder" />
+                        </StackPanel>
+                        <ui:Button Grid.Column="1" Content="Browse" Command="{Binding BrowseCommand}" VerticalAlignment="Bottom" />
+                    </Grid>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <ui:NumberBox DockPanel.Dock="Right" Value="{Binding DefaultConnections, UpdateSourceTrigger=PropertyChanged}"
+                                      Minimum="1" Maximum="32" SmallChange="1" MaxDecimalPlaces="0" Width="132"
+                                      ClearButtonEnabled="False" VerticalAlignment="Center"
+                                      AutomationProperties.Name="Connections per download" />
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="Connections per download" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="Parts of a file fetched at the same time. Some servers limit this; 8 is a good start."
+                                       Style="{StaticResource SettingHelp}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <ui:NumberBox DockPanel.Dock="Right" Value="{Binding MaxConcurrent, UpdateSourceTrigger=PropertyChanged}"
+                                      Minimum="1" Maximum="20" SmallChange="1" MaxDecimalPlaces="0" Width="132"
+                                      ClearButtonEnabled="False" VerticalAlignment="Center"
+                                      AutomationProperties.Name="Downloads at once" />
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="Downloads at once" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="The queue starts the next download when one finishes." Style="{StaticResource SettingHelp}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <ui:NumberBox Value="{Binding SpeedLimitKBps, UpdateSourceTrigger=PropertyChanged}" Minimum="1"
+                                          Maximum="10000000" SmallChange="256" LargeChange="1024" MaxDecimalPlaces="0" Width="150"
+                                          ClearButtonEnabled="False" IsEnabled="{Binding SpeedLimitEnabled}"
+                                          AutomationProperties.Name="Speed limit in KB per second" />
+                            <TextBlock Text="KB/s" Style="{StaticResource BodyText}" Margin="8,0,16,0" />
+                            <ui:ToggleSwitch IsChecked="{Binding SpeedLimitEnabled}" AutomationProperties.Name="Limit total speed" />
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="Limit total speed" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="Shared by all downloads, so browsing stays quick. 1024 KB/s is 1 MB/s."
+                                       Style="{StaticResource SettingHelp}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- Queue and schedule -->
+                <TextBlock Text="Queue schedule" Style="{StaticResource SectionHeading}" />
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <ComboBox ItemsSource="{Binding TimeChoices}" SelectedItem="{Binding StartAt}" Width="110"
+                                      IsEnabled="{Binding ScheduleStart}" ItemStringFormat="HH:mm"
+                                      AutomationProperties.Name="Start time" />
+                            <ui:ToggleSwitch IsChecked="{Binding ScheduleStart}" Margin="16,0,0,0"
+                                             AutomationProperties.Name="Start the queue on a schedule" />
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="Start the queue at" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="Good for night-time downloads. TurboDL needs to be running, even if only in the tray."
+                                       Style="{StaticResource SettingHelp}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <ComboBox ItemsSource="{Binding TimeChoices}" SelectedItem="{Binding StopAt}" Width="110"
+                                      IsEnabled="{Binding ScheduleStop}" ItemStringFormat="HH:mm"
+                                      AutomationProperties.Name="Stop time" />
+                            <ui:ToggleSwitch IsChecked="{Binding ScheduleStop}" Margin="16,0,0,0"
+                                             AutomationProperties.Name="Stop the queue on a schedule" />
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="Stop the queue at" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="Unfinished downloads go back into the queue and continue next time."
+                                       Style="{StaticResource SettingHelp}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <ItemsControl DockPanel.Dock="Right" ItemsSource="{Binding Days}" VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:DayToggle">
+                                    <ToggleButton IsChecked="{Binding IsOn}" Content="{Binding Label}" MinWidth="52" Height="32" Padding="8,0"
+                                                  Margin="2,0" AutomationProperties.Name="{Binding Day}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="On these days" Style="{StaticResource SettingTitle}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding WhenDoneChoices}" DisplayMemberPath="Label"
+                                  SelectedValuePath="Value" SelectedValue="{Binding WhenDone}" Width="180"
+                                  VerticalAlignment="Center" AutomationProperties.Name="When the queue finishes" />
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="When the queue finishes" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="You get 60 seconds to cancel before the PC sleeps or shuts down."
+                                       Style="{StaticResource SettingHelp}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- Categories -->
+                <DockPanel Margin="0,24,0,8">
+                    <ui:Button DockPanel.Dock="Right" Content="Restore defaults" Command="{Binding ResetCategoriesCommand}"
+                               Appearance="Transparent" />
+                    <TextBlock Text="Categories" Style="{StaticResource SectionHeading}" Margin="0" VerticalAlignment="Center" />
+                </DockPanel>
+                <Border Style="{StaticResource SettingRow}">
+                    <StackPanel>
+                        <TextBlock Text="Files are sorted by type. A file that matches no category goes to Other."
+                                   Style="{StaticResource SettingHelp}" Margin="0,0,0,12" />
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="40" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Name" Style="{StaticResource ColumnHeaderText}" />
+                            <TextBlock Grid.Column="1" Text="File types" Style="{StaticResource ColumnHeaderText}" Margin="8,0,0,0" />
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding Categories}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:CategoryRowViewModel">
+                                    <Grid Margin="0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="160" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="40" />
+                                        </Grid.ColumnDefinitions>
+                                        <ui:TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                    PlaceholderText="Name" AutomationProperties.Name="Category name" />
+                                        <ui:TextBox Grid.Column="1" Text="{Binding Extensions, UpdateSourceTrigger=PropertyChanged}"
+                                                    PlaceholderText="zip rar 7z" Margin="8,0,0,0"
+                                                    AutomationProperties.Name="File types" />
+                                        <ui:Button Grid.Column="2" Appearance="Transparent" HorizontalAlignment="Right"
+                                                   Command="{Binding DataContext.RemoveCategoryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                   CommandParameter="{Binding}" ToolTip="Remove category"
+                                                   AutomationProperties.Name="Remove category" Padding="8">
+                                            <ui:Button.Icon>
+                                                <ui:SymbolIcon Symbol="Dismiss24" />
+                                            </ui:Button.Icon>
+                                        </ui:Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ui:Button Content="Add category" Command="{Binding AddCategoryCommand}" Margin="0,8,0,0">
+                            <ui:Button.Icon>
+                                <ui:SymbolIcon Symbol="Add24" />
+                            </ui:Button.Icon>
+                        </ui:Button>
+                    </StackPanel>
+                </Border>
+
+                <!-- Catching links -->
+                <TextBlock Text="Catching links" Style="{StaticResource SectionHeading}" />
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <ui:ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding WatchClipboard}" VerticalAlignment="Center"
+                                         AutomationProperties.Name="Offer to download copied links" />
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="Offer to download copied links" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="When you copy a link to one of the file types below, a small prompt appears."
+                                       Style="{StaticResource SettingHelp}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <StackPanel>
+                        <TextBlock Text="File types to catch" Style="{StaticResource SettingTitle}" />
+                        <TextBlock Text="Used for copied links, and for the browser once it is connected. Separate with spaces."
+                                   Style="{StaticResource SettingHelp}" />
+                        <ui:TextBox Text="{Binding CatchExtensions, UpdateSourceTrigger=PropertyChanged}" Margin="0,8,0,0"
+                                    TextWrapping="Wrap" AutomationProperties.Name="File types to catch" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <ui:NumberBox Value="{Binding MinCatchSizeKB, UpdateSourceTrigger=PropertyChanged}" Minimum="0"
+                                          Maximum="100000000" SmallChange="100" LargeChange="1024" MaxDecimalPlaces="0" Width="150"
+                                          ClearButtonEnabled="False" AutomationProperties.Name="Smallest browser download in KB" />
+                            <TextBlock Text="KB" Style="{StaticResource BodyText}" Margin="8,0,0,0" />
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="Leave small browser downloads to the browser" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="Files under this size download in the browser as usual. 0 catches everything."
+                                       Style="{StaticResource SettingHelp}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- General -->
+                <TextBlock Text="General" Style="{StaticResource SectionHeading}" />
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding ThemeChoices}" DisplayMemberPath="Label"
+                                  SelectedValuePath="Value" SelectedValue="{Binding Theme}" Width="200" VerticalAlignment="Center"
+                                  AutomationProperties.Name="Theme" />
+                        <TextBlock Text="Theme" Style="{StaticResource SettingTitle}" VerticalAlignment="Center" />
+                    </DockPanel>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <ui:ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding CloseToTray}" VerticalAlignment="Center"
+                                         AutomationProperties.Name="Keep running in the tray when closed" />
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="Keep running in the tray when closed" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="Downloads and the schedule keep going. Exit from the tray icon's menu."
+                                       Style="{StaticResource SettingHelp}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <ui:ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding NotifyOnComplete}" VerticalAlignment="Center"
+                                         AutomationProperties.Name="Notify when a download finishes" />
+                        <TextBlock Text="Notify when a download finishes" Style="{StaticResource SettingTitle}"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
+                        <ui:ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding StartWithWindows}" VerticalAlignment="Center"
+                                         AutomationProperties.Name="Start with Windows" />
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="Start with Windows" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="Opens quietly in the tray when you sign in." Style="{StaticResource SettingHelp}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Footer -->
+        <Border Grid.Row="2" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="24,16">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <ui:Button Appearance="Primary" Content="Save" Command="{Binding SaveCommand}" IsDefault="True" MinWidth="104" />
+                    <ui:Button Content="Cancel" Command="{Binding CancelCommand}" IsCancel="True" Margin="8,0,0,0" MinWidth="88" />
+                </StackPanel>
+                <TextBlock Text="{Binding Error}" Style="{StaticResource BodyText}" TextWrapping="Wrap" TextTrimming="None"
+                           Foreground="{DynamicResource SystemFillColorCriticalBrush}" Margin="0,0,16,0" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</ui:FluentWindow>
