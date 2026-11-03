@@ -2,12 +2,15 @@
   <Folder Name="/src/">
     <Project Path="src/TurboDL.App/TurboDL.App.csproj" />
     <Project Path="src/TurboDL.Core/TurboDL.Core.csproj" />
+    <Project Path="src/TurboDL.Installer/TurboDL.Installer.csproj" />
     <Project Path="src/TurboDL.Ipc/TurboDL.Ipc.csproj" />
     <Project Path="src/TurboDL.NativeHost/TurboDL.NativeHost.csproj" />
+    <Project Path="src/TurboDL.Setup/TurboDL.Setup.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FakeYtDlp/FakeYtDlp.csproj" />
     <Project Path="tests/JobHost/JobHost.csproj" />
     <Project Path="tests/TurboDL.Core.Tests/TurboDL.Core.Tests.csproj" />
+    <Project Path="tests/TurboDL.Installer.Tests/TurboDL.Installer.Tests.csproj" />
   </Folder>
 </Solution>

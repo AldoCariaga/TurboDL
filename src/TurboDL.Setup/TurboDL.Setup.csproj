@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    TurboDL Setup: installs, upgrades and uninstalls TurboDL. Runs as the user; only the Program Files copy and the
+    Installed apps entry run in an elevated copy of itself (/worker).
+    The two exes it installs are embedded when SetupPayloadDir is set (scripts\publish.ps1 does that). A plain build
+    has none, and Setup says so instead of installing.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyTitle>TurboDL Setup</AssemblyTitle>
+    <ApplicationIcon>..\..\assets\TurboDL.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WPF projects leave System.IO out of the implicit usings. -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TurboDL.Installer\TurboDL.Installer.csproj" />
+    <ProjectReference Include="..\TurboDL.Ipc\TurboDL.Ipc.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="..\..\assets\TurboDL.ico" Link="Assets\TurboDL.ico" />
+    <EmbeddedResource Include="..\..\extension\EXTENSION_ID.txt" LogicalName="ExtensionId" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(SetupPayloadDir)' != ''">
+    <EmbeddedResource Include="$(SetupPayloadDir)\TurboDL.App.exe" LogicalName="payload/TurboDL.App.exe" />
+    <EmbeddedResource Include="$(SetupPayloadDir)\TurboDL.NativeHost.exe" LogicalName="payload/TurboDL.NativeHost.exe" />
+  </ItemGroup>
+
+</Project>

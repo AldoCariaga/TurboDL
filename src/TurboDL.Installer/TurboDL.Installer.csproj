@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- What TurboDL Setup does, without its window: files, browser registration, shortcuts, startup, the Installed
+       apps entry and cleanup. Every location comes in from outside, so tests run it against scratch folders and keys. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
