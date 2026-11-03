@@ -10,6 +10,7 @@ using TurboDL.App.Services;
 using TurboDL.App.ViewModels;
 using TurboDL.App.Views;
 using TurboDL.Core.Archives;
+using TurboDL.Core.Browser;
 using TurboDL.Core.Categories;
 using TurboDL.Core.Engine;
 using TurboDL.Core.Ipc;
@@ -80,6 +81,8 @@ public partial class App : Application
         services.AddSingleton<VideoToolsService>();
         services.AddSingleton(sp => new SevenZipTools(toolsFolder, sp.GetRequiredService<System.Net.Http.HttpClient>()));
         services.AddSingleton<SevenZipService>();
+        services.AddSingleton(sp => new PlaywrightTools(toolsFolder, sp.GetRequiredService<System.Net.Http.HttpClient>()));
+        services.AddSingleton<BrowserCapture>();
         services.AddSingleton<DownloadManager>();
         services.AddSingleton<QueueService>();
         services.AddSingleton<BatchService>();

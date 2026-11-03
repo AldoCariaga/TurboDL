@@ -7,6 +7,7 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.64.1" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 
@@ -24,5 +25,16 @@
   <ItemGroup>
     <Resource Include="..\..\assets\TurboDL.ico" Link="Assets\TurboDL.ico" />
   </ItemGroup>
+
+  <!-- Playwright's driver (node.exe + playwright-core) is downloaded on first use into <tools>\playwright by
+       PlaywrightTools, so nothing of it is copied next to the exe and the single-file publish stays one file. -->
+  <PropertyGroup>
+    <PlaywrightPlatform>none</PlaywrightPlatform>
+  </PropertyGroup>
+  <Target Name="LeavePlaywrightFilesOut" AfterTargets="CopyPlaywrightFilesToOutput">
+    <ItemGroup>
+      <Content Remove="@(Content)" Condition="'%(Content.NuGetPackageId)' == 'Microsoft.Playwright'" />
+    </ItemGroup>
+  </Target>
 
 </Project>
