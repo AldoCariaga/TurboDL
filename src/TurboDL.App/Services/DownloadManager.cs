@@ -112,6 +112,34 @@ public sealed class DownloadManager
         item.Refresh();
     }
 
+    /// <summary>
+    /// Marks a finished download as failed after a check found it bad (e.g. a web page saved as a .rar). The bad file is
+    /// deleted and the progress reset, so starting it again downloads from scratch. Not retried automatically.
+    /// </summary>
+    public void MarkFailed(DownloadItemViewModel item, string message)
+    {
+        var info = item.Info;
+        if (File.Exists(info.FilePath)) TryDelete(info.FilePath, recycle: false);
+        // FileName stays, so the retry saves under the same name.
+        info.Segments = [];
+        info.TotalSize = null;
+        info.ETag = null;
+        info.LastModified = null;
+        info.CompletedUtc = null;
+        info.Status = DownloadStatus.Failed;
+        info.Error = message;
+        info.ErrorIsTransient = false;
+        store.Save(info);
+        item.AddLog(message);
+        item.Refresh();
+    }
+
+    /// <summary>Sends files to the Recycle Bin (missing ones are skipped). For a batch's parts after extracting.</summary>
+    public void RecycleFiles(IEnumerable<string> paths)
+    {
+        foreach (var path in paths) TryDelete(path, recycle: true);
+    }
+
     /// <summary>This download's own cap in bytes/second (0 = none). Applies at once if it is running.</summary>
     public void SetSpeedLimit(DownloadItemViewModel item, long bytesPerSecond)
     {

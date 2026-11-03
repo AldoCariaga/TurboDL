@@ -69,6 +69,12 @@ public sealed class DownloadInfo
     /// </summary>
     public bool ExpectFile { get; set; }
 
+    /// <summary>
+    /// The name taken from the link when a batch was made ("" when the server picks it), or null outside batches.
+    /// <see cref="FileName"/> can't serve, because the engine replaces it with a unique name when the first one is taken.
+    /// </summary>
+    public string? RequestedFileName { get; set; }
+
     /// <summary>True when the last failure was a network or server hiccup worth retrying later (not a 404, a web page or a changed file).</summary>
     public bool ErrorIsTransient { get; set; }
 

@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using TurboDL.App.Services;
 using TurboDL.App.ViewModels;
 using TurboDL.App.Views;
+using TurboDL.Core.Archives;
 using TurboDL.Core.Categories;
 using TurboDL.Core.Engine;
 using TurboDL.Core.Ipc;
@@ -28,7 +29,8 @@ public partial class App : Application
     private Mutex? _singleInstance;
     private TrayIcon? _tray;
     private LinkPromptWindow? _linkPrompt;
-    private DownloadItemViewModel? _lastFinished;
+    /// <summary>What clicking the latest toast does: show a finished download, open a batch's folder, or show the window.</summary>
+    private Action? _notificationClick;
     private bool _exiting;
     private bool _toldAboutTray;
 
@@ -76,8 +78,11 @@ public partial class App : Application
         services.AddSingleton(sp => new YtDlpTools(toolsFolder, sp.GetRequiredService<System.Net.Http.HttpClient>()));
         services.AddSingleton(sp => new YtDlpService(sp.GetRequiredService<YtDlpTools>()));
         services.AddSingleton<VideoToolsService>();
+        services.AddSingleton(sp => new SevenZipTools(toolsFolder, sp.GetRequiredService<System.Net.Http.HttpClient>()));
+        services.AddSingleton<SevenZipService>();
         services.AddSingleton<DownloadManager>();
         services.AddSingleton<QueueService>();
+        services.AddSingleton<BatchService>();
         services.AddSingleton<ClipboardWatcher>();
         services.AddSingleton<WindowService>();
         services.AddSingleton<AddDownloadPrompt>();
@@ -100,6 +105,13 @@ public partial class App : Application
         manager.Completed += OnDownloadFinished;
         var queue = Get<QueueService>();
         queue.Finished += OnQueueFinished;
+        // Resolved before manager.Load(), so its Ended handler is in place when resumed downloads finish.
+        var batches = Get<BatchService>();
+        batches.Notify += (title, text, click) =>
+        {
+            _notificationClick = click ?? WindowService.ShowMain;
+            if (Get<SettingsService>().Current.NotifyOnComplete) _tray?.Notify(title, text);
+        };
 
         var clipboard = Get<ClipboardWatcher>();
         clipboard.Attach(window);
@@ -112,6 +124,7 @@ public partial class App : Application
 
         manager.Load();
         queue.Initialize();
+        batches.Load();
         Get<VideoToolsService>().StartBackgroundUpdates(() => manager.AnyVideoRunning);
 
         // Second launches and the browser's native host reach this copy through the pipe.
@@ -127,6 +140,7 @@ public partial class App : Application
         {
             Get<IpcServer>().Stop();
             Get<VideoToolsService>().StopBackgroundUpdates();
+            Get<BatchService>().Shutdown();
             Get<DownloadManager>().Shutdown();
             Get<ClipboardWatcher>().Dispose();
             _tray?.Dispose();
@@ -186,11 +200,7 @@ public partial class App : Application
 
         _tray = new TrayIcon { Menu = menu };
         _tray.Click += WindowService.ShowMain;
-        _tray.NotificationClick += () =>
-        {
-            if (_lastFinished is { } item) vm.ShowInFolderCommand.Execute(item);
-            else WindowService.ShowMain();
-        };
+        _tray.NotificationClick += () => (_notificationClick ?? WindowService.ShowMain)();
         _tray.Show();
         _tray.SetTooltip(vm.TrayText);
         vm.PropertyChanged += (_, e) =>
@@ -209,7 +219,10 @@ public partial class App : Application
 
     private void OnDownloadFinished(DownloadItemViewModel item)
     {
-        _lastFinished = item;
+        // A batch speaks for its parts (one toast when it finishes), so a 50-part batch doesn't raise 50 toasts.
+        if (item.Info.BatchId is not null) return;
+        var vm = Get<MainWindowViewModel>();
+        _notificationClick = () => vm.ShowInFolderCommand.Execute(item);
         if (Get<SettingsService>().Current.NotifyOnComplete)
             _tray?.Notify("Download finished", $"{item.Name}\n{Format.Bytes(item.Total)}. Click to show it in its folder.");
     }
