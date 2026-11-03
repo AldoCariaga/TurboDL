@@ -1,3 +1,5 @@
+using TurboDL.Core.Archives;
+
 namespace TurboDL.Core.Categories;
 
 /// <summary>
@@ -41,9 +43,16 @@ public sealed class CategoryRules
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// The category for <paramref name="fileName"/>'s extension, or <see cref="Other"/>. A split archive volume
+    /// (<c>name.zip.001</c>, <c>name.7z.002</c>) goes by its archive extension, not the volume number.
+    /// </summary>
     public string CategoryFor(string? fileName)
     {
-        var ext = Path.GetExtension(fileName ?? "").TrimStart('.');
+        var ext = MultipartArchive.TryParse(fileName ?? "", out _, out var scheme, out var archiveExt, out _)
+            && scheme == VolumeScheme.Split
+                ? archiveExt
+                : Path.GetExtension(fileName ?? "").TrimStart('.');
         return ext.Length > 0 && _byExtension.TryGetValue(ext, out var category) ? category : Other;
     }
 

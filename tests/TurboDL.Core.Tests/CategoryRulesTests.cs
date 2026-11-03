@@ -17,6 +17,24 @@ public class CategoryRulesTests
     public void Picks_category_from_extension(string fileName, string expected) =>
         Assert.Equal(expected, _rules.CategoryFor(fileName));
 
+    [Theory]
+    [InlineData("testdata.zip.001", "Compressed")]
+    [InlineData("Backup.7Z.003", "Compressed")]
+    [InlineData("testdata.part02.rar", "Compressed")]
+    [InlineData("movie.001", "Other")]
+    [InlineData("movie.mkv.001", "Other")]
+    public void Split_volumes_go_by_their_archive_extension(string fileName, string expected) =>
+        Assert.Equal(expected, _rules.CategoryFor(fileName));
+
+    [Fact]
+    public void Split_volumes_follow_a_custom_rule_for_their_archive_extension()
+    {
+        var rules = new CategoryRules(@"C:\Downloads\TurboDL", [("Backups", ["zip"]), ("Compressed", ["7z", "rar"])]);
+
+        Assert.Equal("Backups", rules.CategoryFor("testdata.zip.002"));
+        Assert.Equal("Compressed", rules.CategoryFor("testdata.7z.001"));
+    }
+
     [Fact]
     public void Other_is_always_last() => Assert.Equal(CategoryRules.Other, _rules.Categories[^1]);
 
