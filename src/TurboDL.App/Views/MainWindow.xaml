@@ -19,7 +19,38 @@
 
     <ui:FluentWindow.InputBindings>
         <KeyBinding Gesture="Ctrl+N" Command="{Binding AddUrlCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+N" Command="{Binding AddBatchCommand}" />
     </ui:FluentWindow.InputBindings>
+
+    <ui:FluentWindow.Resources>
+        <!--
+            Batch entries in the sidebar. The item's Tag carries the window's view model, so the menu (which lives
+            outside the visual tree) can reach the commands; each command gets the entry itself as its parameter.
+        -->
+        <ContextMenu x:Key="BatchMenu" x:Shared="False"
+                     DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+            <ui:MenuItem Header="Retry failed parts" Command="{Binding RetryBatchCommand}" Icon="{ui:SymbolIcon ArrowClockwise24}"
+                         CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <ui:MenuItem Header="Extract now" Command="{Binding ExtractBatchCommand}" Icon="{ui:SymbolIcon FolderZip24}"
+                         CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <ui:MenuItem Header="Open folder" Command="{Binding OpenBatchFolderCommand}" Icon="{ui:SymbolIcon FolderOpen24}"
+                         CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <Separator />
+            <ui:MenuItem Header="Remove from sidebar" Command="{Binding RemoveBatchCommand}" Icon="{ui:SymbolIcon Dismiss24}"
+                         CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+        </ContextMenu>
+
+        <Style x:Key="SidebarEntry" TargetType="ListBoxItem" BasedOn="{StaticResource SidebarItem}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Group}" Value="Batches">
+                    <!-- Two lines: the name and the batch's status. -->
+                    <Setter Property="Height" Value="50" />
+                    <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+                    <Setter Property="ContextMenu" Value="{StaticResource BatchMenu}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </ui:FluentWindow.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
@@ -39,10 +70,10 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Sidebar: status views, then categories. Sits straight on Mica. -->
+            <!-- Sidebar: status views, then batches, then categories. Sits straight on Mica. -->
             <ListBox Grid.Column="0" Style="{StaticResource BareList}" Margin="8,4,8,8"
                      ItemsSource="{Binding SidebarView}" SelectedItem="{Binding SelectedFilter}"
-                     ItemContainerStyle="{StaticResource SidebarItem}"
+                     ItemContainerStyle="{StaticResource SidebarEntry}"
                      AutomationProperties.Name="Download views">
                 <ListBox.GroupStyle>
                     <GroupStyle>
@@ -69,13 +100,23 @@
                             </Grid.ColumnDefinitions>
                             <ui:SymbolIcon Grid.Column="0" Symbol="{Binding Icon}" FontSize="16" HorizontalAlignment="Left"
                                            VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="{Binding Name}" Style="{StaticResource BodyText}" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" Style="{StaticResource BodyText}" />
+                                <TextBlock x:Name="Subtitle" Text="{Binding Subtitle}" Style="{StaticResource CaptionText}"
+                                           ToolTip="{Binding Subtitle}" Margin="0,1,0,0" />
+                            </StackPanel>
                             <TextBlock x:Name="Count" Grid.Column="2" Text="{Binding Count}" Style="{StaticResource NumberText}"
                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                         </Grid>
                         <DataTemplate.Triggers>
                             <DataTrigger Binding="{Binding Count}" Value="0">
                                 <Setter TargetName="Count" Property="Visibility" Value="Hidden" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Subtitle}" Value="{x:Null}">
+                                <Setter TargetName="Subtitle" Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Subtitle}" Value="">
+                                <Setter TargetName="Subtitle" Property="Visibility" Value="Collapsed" />
                             </DataTrigger>
                         </DataTemplate.Triggers>
                     </DataTemplate>
@@ -102,7 +143,16 @@
                                 <ui:SymbolIcon Symbol="Add24" />
                             </ui:Button.Icon>
                         </ui:Button>
-                        <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}" Margin="12,0,0,0" Command="{Binding ResumeCommand}" AutomationProperties.Name="Resume">
+                        <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}" Margin="8,0,0,0" Command="{Binding AddBatchCommand}"
+                                ToolTip="Add many links at once (Ctrl+Shift+N)" AutomationProperties.Name="Add batch">
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Symbol="TextBulletListAdd24" FontSize="16" Margin="0,0,8,0" />
+                                <TextBlock Text="Add batch" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Rectangle DockPanel.Dock="Left" Width="1" Height="20" Margin="10,0"
+                                   Fill="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                        <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}" Margin="0" Command="{Binding ResumeCommand}" AutomationProperties.Name="Resume">
                             <StackPanel Orientation="Horizontal">
                                 <ui:SymbolIcon Symbol="Play24" FontSize="16" Margin="0,0,8,0" />
                                 <TextBlock Text="Resume" VerticalAlignment="Center" />

@@ -1,0 +1,90 @@
+<ui:FluentWindow x:Class="TurboDL.App.Views.AddBatchWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:vm="clr-namespace:TurboDL.App.ViewModels"
+                 mc:Ignorable="d"
+                 d:DataContext="{d:DesignInstance vm:AddBatchViewModel}"
+                 Title="Add batch"
+                 Width="640" SizeToContent="Height" ResizeMode="NoResize"
+                 ShowInTaskbar="False"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowBackdropType="Mica"
+                 WindowCornerPreference="Round"
+                 FontFamily="{StaticResource TextFont}">
+
+    <StackPanel>
+        <ui:TitleBar Title="Add batch" ShowMinimize="False" ShowMaximize="False" />
+
+        <StackPanel Margin="24,4,24,20">
+            <TextBlock Text="Links" Style="{StaticResource FieldLabel}" />
+            <ui:TextBox x:Name="LinksBox" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                        AcceptsReturn="True" TextWrapping="NoWrap" Height="200" VerticalContentAlignment="Top"
+                        VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                        PlaceholderText="Paste links, one per line. Markdown and other text around them is fine."
+                        AutomationProperties.Name="Links" />
+
+            <!-- At least one line high so the form doesn't jump as the summary changes. -->
+            <DockPanel MinHeight="32" Margin="0,4,0,8">
+                <TextBlock x:Name="SummaryText" Text="{Binding Summary}" Style="{StaticResource CaptionText}"
+                           TextWrapping="Wrap" TextTrimming="None" VerticalAlignment="Top" Margin="0,2,0,0" />
+            </DockPanel>
+
+            <TextBlock Text="Save to" Style="{StaticResource FieldLabel}" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ui:TextBox Text="{Binding Folder, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Save to" />
+                <ui:Button Grid.Column="1" Margin="8,0,0,0" Command="{Binding BrowseCommand}" Content="Browse"
+                           VerticalAlignment="Stretch" />
+            </Grid>
+
+            <TextBlock Text="Connections" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+            <StackPanel Orientation="Horizontal">
+                <ui:NumberBox Value="{Binding Connections, UpdateSourceTrigger=PropertyChanged}" Minimum="1" Maximum="32"
+                              SmallChange="1" LargeChange="4" MaxDecimalPlaces="0" Width="132"
+                              ClearButtonEnabled="False" AutomationProperties.Name="Connections" />
+                <TextBlock Text="Per file, 1 to 32" Style="{StaticResource CaptionText}" Margin="12,0,0,0" />
+            </StackPanel>
+
+            <ui:ToggleSwitch IsChecked="{Binding AutoExtract}" Margin="0,16,0,0"
+                             Content="Extract when all parts have downloaded"
+                             AutomationProperties.Name="Extract when all parts have downloaded" />
+            <ui:ToggleSwitch IsChecked="{Binding DeleteParts}" IsEnabled="{Binding AutoExtract}" Margin="0,8,0,0"
+                             Content="Delete the parts after extracting (to the Recycle Bin)"
+                             AutomationProperties.Name="Delete the parts after extracting" />
+
+            <Expander Header="Sign-in for file hosts (optional)" Margin="0,16,0,0">
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Text="If the host needs you signed in, open one of the links in your browser, press F12, go to Network, select the request and copy its Cookie header here. Links that show a CAPTCHA have to be opened in the browser; TurboDL can't solve them."
+                               Style="{StaticResource CaptionText}" TextWrapping="Wrap" TextTrimming="None" Margin="0,0,0,12" />
+                    <TextBlock Text="Cookie" Style="{StaticResource FieldLabel}" />
+                    <ui:TextBox Text="{Binding Cookie, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="name=value; name2=value2" AutomationProperties.Name="Cookie" />
+                    <TextBlock Text="Referer" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
+                    <ui:TextBox Text="{Binding Referer, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="https://example.com/" AutomationProperties.Name="Referer" />
+                    <TextBlock Text="User-Agent" Style="{StaticResource FieldLabel}" Margin="0,12,0,6" />
+                    <ui:TextBox Text="{Binding UserAgent, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="Your browser's, if the host checks it" AutomationProperties.Name="User-Agent" />
+                </StackPanel>
+            </Expander>
+        </StackPanel>
+
+        <!-- Footer band, as in Windows 11 dialogs. -->
+        <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="24">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <ui:Button Appearance="Primary" Content="Start" Command="{Binding StartNowCommand}"
+                           IsDefault="True" MinWidth="128" />
+                <ui:Button Content="Add to queue" Command="{Binding AddToQueueCommand}" Margin="8,0,0,0" MinWidth="112" />
+                <ui:Button Content="Cancel" Command="{Binding CancelCommand}" IsCancel="True" Margin="8,0,0,0"
+                           MinWidth="88" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</ui:FluentWindow>

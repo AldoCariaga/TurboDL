@@ -86,8 +86,10 @@ public partial class App : Application
         services.AddSingleton<ClipboardWatcher>();
         services.AddSingleton<WindowService>();
         services.AddSingleton<AddDownloadPrompt>();
+        services.AddSingleton<AddBatchPrompt>();
         services.AddSingleton<IpcServer>();
         services.AddTransient<AddDownloadViewModel>();
+        services.AddTransient<AddBatchViewModel>();
         services.AddSingleton<MainWindowViewModel>();
         services.AddSingleton<MainWindow>();
 
@@ -192,6 +194,7 @@ public partial class App : Application
         var menu = new ContextMenu();
         menu.Items.Add(Item("Open TurboDL", SymbolRegular.Window24, WindowService.ShowMain, bold: true));
         menu.Items.Add(Item("Add URL", SymbolRegular.Add24, () => vm.AddUrlCommand.Execute(null)));
+        menu.Items.Add(Item("Add batch…", SymbolRegular.TextBulletListAdd24, () => vm.AddBatchCommand.Execute(null)));
         menu.Items.Add(queueItem);
         menu.Items.Add(Item("Pause all", SymbolRegular.Pause24, () => vm.PauseAllCommand.Execute(null)));
         menu.Items.Add(new Separator());

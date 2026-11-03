@@ -23,9 +23,14 @@ public interface IDeletePrompt
 
 public sealed partial class MainWindowViewModel : ObservableObject
 {
+    private const string BatchesGroup = "Batches";
+    private const string CategoriesGroup = "Categories";
+
     private readonly DownloadManager _manager;
     private readonly CategoryRules _categories;
     private readonly AddDownloadPrompt _addPrompt;
+    private readonly AddBatchPrompt _addBatch;
+    private readonly BatchService _batches;
     private readonly IDeletePrompt _deletePrompt;
     private readonly SettingsService _settings;
     private readonly WindowService _windows;
@@ -34,12 +39,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private IReadOnlyList<DownloadItemViewModel> _selection = [];
 
     public MainWindowViewModel(DownloadManager manager, CategoryRules categories, AddDownloadPrompt addPrompt,
-        IDeletePrompt deletePrompt, QueueService queue, SettingsService settings, WindowService windows,
-        ClipboardWatcher clipboard)
+        AddBatchPrompt addBatch, BatchService batches, IDeletePrompt deletePrompt, QueueService queue,
+        SettingsService settings, WindowService windows, ClipboardWatcher clipboard)
     {
         _manager = manager;
         _categories = categories;
         _addPrompt = addPrompt;
+        _addBatch = addBatch;
+        _batches = batches;
         _deletePrompt = deletePrompt;
         _settings = settings;
         _windows = windows;
@@ -55,8 +62,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
             new("Queued", SymbolRegular.Clock24, i => i.Status == DownloadStatus.Queued),
         ];
         RebuildCategories();
+        RebuildBatches();
         SelectedFilter = Filters[0];
         categories.Changed += RebuildCategories;
+        batches.Batches.CollectionChanged += (_, _) => RebuildBatches();
 
         var source = new ListCollectionView(manager.Items)
         {
@@ -124,6 +133,41 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         _addPrompt.Show();
         NotifyCommands();
+    }
+
+    [RelayCommand]
+    private void AddBatch()
+    {
+        _addBatch.Show();
+        NotifyCommands();
+    }
+
+    [RelayCommand]
+    private void RetryBatch(SidebarFilter? filter)
+    {
+        if (BatchOf(filter) is { } batch) _batches.RetryFailed(batch);
+    }
+
+    [RelayCommand]
+    private void ExtractBatch(SidebarFilter? filter)
+    {
+        if (BatchOf(filter) is { } batch) _batches.ExtractNow(batch);
+    }
+
+    /// <summary>Opens where the batch was last extracted to, else its download folder.</summary>
+    [RelayCommand]
+    private void OpenBatchFolder(SidebarFilter? filter)
+    {
+        if (BatchOf(filter) is not { } batch) return;
+        var folder = batch.Info.ExtractedTo.LastOrDefault() ?? batch.Info.Directory;
+        if (Directory.Exists(folder)) Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+    }
+
+    /// <summary>Forgets the batch; its downloads stay in the list.</summary>
+    [RelayCommand]
+    private void RemoveBatch(SidebarFilter? filter)
+    {
+        if (BatchOf(filter) is { } batch) _batches.Remove(batch);
     }
 
     [RelayCommand(CanExecute = nameof(CanResume))]
@@ -229,7 +273,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void UpdateSummary()
     {
-        foreach (var f in Filters) f.Count = _manager.Items.Count(f.Match);
+        foreach (var f in Filters)
+        {
+            f.Count = _manager.Items.Count(f.Match);
+            if (f.BatchId is not null) f.Subtitle = BatchOf(f)?.StatusText;
+        }
 
         var active = _manager.Items.Where(i => i.IsRunning).ToList();
         var queued = _manager.Items.Count(i => i.Status == DownloadStatus.Queued);
@@ -263,14 +311,40 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Category entries follow the rules in Settings; the status views above them never change.</summary>
     private void RebuildCategories()
     {
-        var selectedCategory = SelectedFilter is { Group: not null } f0 ? f0.Name : null;
-        foreach (var old in Filters.Where(f => f.Group is not null).ToList()) Filters.Remove(old);
+        var selectedCategory = SelectedFilter is { Group: CategoriesGroup } f0 ? f0.Name : null;
+        foreach (var old in Filters.Where(f => f.Group == CategoriesGroup).ToList()) Filters.Remove(old);
         foreach (var c in _categories.Categories)
-            Filters.Add(new SidebarFilter(c, CategoryIcon(c), i => i.Category == c, "Categories"));
+            Filters.Add(new SidebarFilter(c, CategoryIcon(c), i => i.Category == c, CategoriesGroup));
         if (selectedCategory is not null)
-            SelectedFilter = Filters.FirstOrDefault(f => f.Group is not null && f.Name == selectedCategory) ?? Filters[0];
+            SelectedFilter = Filters.FirstOrDefault(f => f.Group == CategoriesGroup && f.Name == selectedCategory) ?? Filters[0];
         UpdateSummaryIfReady();
     }
+
+    /// <summary>
+    /// One entry per batch, between the status views and the categories. The sidebar groups in the order the groups
+    /// first appear in <see cref="Filters"/>, so the batches go in just before the first category.
+    /// </summary>
+    private void RebuildBatches()
+    {
+        var selectedBatch = SelectedFilter?.BatchId;
+        foreach (var old in Filters.Where(f => f.Group == BatchesGroup).ToList()) Filters.Remove(old);
+        var at = Filters.TakeWhile(f => f.Group != CategoriesGroup).Count();
+        foreach (var b in _batches.Batches)
+        {
+            var id = b.Info.Id;
+            Filters.Insert(at++, new SidebarFilter(b.Name, SymbolRegular.FolderZip24, i => i.Info.BatchId == id, BatchesGroup)
+            {
+                BatchId = id,
+                Subtitle = b.StatusText,
+            });
+        }
+        if (selectedBatch is not null)
+            SelectedFilter = Filters.FirstOrDefault(f => f.BatchId == selectedBatch) ?? Filters[0];
+        UpdateSummaryIfReady();
+    }
+
+    private BatchViewModel? BatchOf(SidebarFilter? filter) =>
+        filter?.BatchId is { } id ? _batches.Batches.FirstOrDefault(b => b.Info.Id == id) : null;
 
     private void UpdateSummaryIfReady()
     {

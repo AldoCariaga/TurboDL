@@ -3,7 +3,7 @@ using Wpf.Ui.Controls;
 
 namespace TurboDL.App.ViewModels;
 
-/// <summary>One entry in the sidebar: a status view (All, Downloading…) or a category.</summary>
+/// <summary>One entry in the sidebar: a status view (All, Downloading…), a batch or a category.</summary>
 public sealed partial class SidebarFilter(string name, SymbolRegular icon, Func<DownloadItemViewModel, bool> match, string? group = null)
     : ObservableObject
 {
@@ -15,5 +15,11 @@ public sealed partial class SidebarFilter(string name, SymbolRegular icon, Func<
 
     public Func<DownloadItemViewModel, bool> Match { get; } = match;
 
+    /// <summary>The batch this entry shows; null for status views and categories.</summary>
+    public long? BatchId { get; init; }
+
     [ObservableProperty] public partial int Count { get; set; }
+
+    /// <summary>A second line under the name (a batch's status); null for none.</summary>
+    [ObservableProperty] public partial string? Subtitle { get; set; }
 }
