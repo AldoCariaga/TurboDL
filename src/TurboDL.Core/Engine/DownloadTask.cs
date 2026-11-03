@@ -502,7 +502,7 @@ public sealed class DownloadTask
             var code = (int)response.StatusCode;
             if (code is 408 or 429 or >= 500) throw TransientHttpException.From(response);
             if (!response.IsSuccessStatusCode)
-                throw new DownloadFailedException($"Server returned HTTP {code} {response.ReasonPhrase}.");
+                throw new ServerRefusedException(code, $"Server returned HTTP {code} {response.ReasonPhrase}.");
             if (_info.SupportsRanges && response.StatusCode != HttpStatusCode.PartialContent)
                 throw new DownloadFailedException("Server stopped accepting range requests.");
 

@@ -176,7 +176,7 @@ public sealed class DownloadTaskTests : IDisposable
         await using var server = await TestFileServer.StartAsync([1, 2, 3]);
         var info = NewInfo(server.Url.Replace("/file", "/missing"));
 
-        var ex = await Assert.ThrowsAsync<DownloadFailedException>(
+        var ex = await Assert.ThrowsAsync<ServerRefusedException>(
             () => new DownloadTask(info, Http, FastOptions).RunAsync(CancellationToken.None));
         Assert.Contains("404", ex.Message);
     }
@@ -294,6 +294,28 @@ public sealed class DownloadTaskTests : IDisposable
         Assert.True(!Directory.Exists(_dir) || !Directory.EnumerateFiles(_dir, "*.turbodl").Any());
     }
 
+    [Theory]
+    [InlineData(404, true)]
+    [InlineData(403, true)]
+    [InlineData(410, true)]
+    [InlineData(400, false)]
+    public async Task Refused_FailsWithStatus_NoRetries(int status, bool mayNeedBrowser)
+    {
+        await using var server = await TestFileServer.StartAsync(TestFileServer.RandomBytes(1000));
+        server.RefuseWith = status;
+        var info = NewInfo(server.Url);
+        info.ExpectFile = true;
+
+        var ex = await Assert.ThrowsAsync<ServerRefusedException>(
+            () => new DownloadTask(info, Http, FastOptions).RunAsync(CancellationToken.None));
+
+        Assert.Equal(status, ex.StatusCode);
+        Assert.Equal(mayNeedBrowser, ex.MayNeedBrowser);
+        Assert.Equal(DownloadStatus.Failed, info.Status);
+        Assert.False(info.ErrorIsTransient);
+        Assert.Single(server.RequestHeaders); // the probe only
+    }
+
     [Fact]
     public async Task WithoutExpectFile_HtmlResponse_Downloads()
     {
@@ -398,7 +420,7 @@ public sealed class DownloadTaskTests : IDisposable
         await using var server = await TestFileServer.StartAsync([1, 2, 3]);
         var info = NewInfo(server.Url.Replace("/file", "/missing"));
 
-        await Assert.ThrowsAsync<DownloadFailedException>(
+        await Assert.ThrowsAsync<ServerRefusedException>(
             () => new DownloadTask(info, Http, FastOptions).RunAsync(CancellationToken.None));
         Assert.Equal(DownloadStatus.Failed, info.Status);
         Assert.False(info.ErrorIsTransient);

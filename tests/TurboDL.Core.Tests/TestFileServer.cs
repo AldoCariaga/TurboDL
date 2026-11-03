@@ -34,6 +34,9 @@ public sealed class TestFileServer : IAsyncDisposable
     /// </summary>
     public string? RequiredCookie { get; set; }
 
+    /// <summary>When set, every request gets this status and no file, as a host does with requests it won't serve.</summary>
+    public int? RefuseWith { get; set; }
+
     /// <summary>Server-side cap per response, in bytes/second (0 = none).</summary>
     public int ThrottleBytesPerSecond { get; set; }
 
@@ -96,6 +99,11 @@ public sealed class TestFileServer : IAsyncDisposable
     {
         RecordHeaders(ctx);
         var res = ctx.Response;
+        if (RefuseWith is { } refusal)
+        {
+            res.StatusCode = refusal;
+            return;
+        }
         if (RequiredCookie is not null && ctx.Request.Headers.Cookie.ToString() != RequiredCookie)
         {
             res.StatusCode = 200;

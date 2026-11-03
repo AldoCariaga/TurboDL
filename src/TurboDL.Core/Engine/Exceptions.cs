@@ -9,6 +9,18 @@ public sealed class RemoteFileChangedException(string message) : DownloadFailedE
 /// <summary>The host answered with a web page (sign-in, expired link, CAPTCHA) where a file was expected. Retrying won't help.</summary>
 public sealed class HostReturnedPageException(string message) : DownloadFailedException(message);
 
+/// <summary>The server refused the request with a status that retrying won't change (a 4xx other than 408/429).</summary>
+public sealed class ServerRefusedException(int statusCode, string message) : DownloadFailedException(message)
+{
+    public int StatusCode { get; } = statusCode;
+
+    /// <summary>
+    /// 401, 403, 404 or 410: what file hosts answer a request that isn't from a browser. For a link that must give a
+    /// file, a browser may still get through; for a direct link it usually means the file is gone.
+    /// </summary>
+    public bool MayNeedBrowser => StatusCode is 401 or 403 or 404 or 410;
+}
+
 /// <summary>Server answered with a status that is worth retrying (408, 429, 5xx).</summary>
 public sealed class TransientHttpException(int statusCode, TimeSpan? retryAfter = null)
     : Exception($"Server returned HTTP {statusCode}.")

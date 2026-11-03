@@ -52,7 +52,7 @@ public static class UrlProbe
         }
         else
         {
-            throw new DownloadFailedException($"Server returned HTTP {code} {response.ReasonPhrase}.");
+            throw new ServerRefusedException(code, $"Server returned HTTP {code} {response.ReasonPhrase}.");
         }
 
         var finalUrl = response.RequestMessage?.RequestUri ?? new Uri(url);
