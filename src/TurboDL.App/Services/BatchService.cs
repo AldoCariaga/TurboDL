@@ -31,7 +31,14 @@ public sealed class BatchService
     private readonly DownloadStore store;
     private readonly SevenZipService sevenZip;
     private readonly CategoryRules rules;
+    private readonly SettingsService settings;
     private readonly ILogger<BatchService> log;
+
+    /// <summary>
+    /// Parts waiting for a free slot while the queue isn't running (when it runs, it starts them itself), oldest first.
+    /// A part only starts when fewer than "downloads at once" are running, however it came to start.
+    /// </summary>
+    private readonly List<long> _waiting = [];
 
     /// <summary>Download id → the timer that retries it. One per download, so a retry is never scheduled twice.</summary>
     private readonly Dictionary<long, DispatcherTimer> _retryTimers = [];
@@ -43,13 +50,14 @@ public sealed class BatchService
     private readonly Dictionary<long, string> _busyText = [];
 
     public BatchService(DownloadManager manager, QueueService queue, DownloadStore store, SevenZipService sevenZip,
-        CategoryRules rules, ILogger<BatchService> log)
+        CategoryRules rules, SettingsService settings, ILogger<BatchService> log)
     {
         this.manager = manager;
         this.queue = queue;
         this.store = store;
         this.sevenZip = sevenZip;
         this.rules = rules;
+        this.settings = settings;
         this.log = log;
         manager.Ended += OnEnded;
         manager.SourceReplaced += OnSourceReplaced;
@@ -137,11 +145,51 @@ public sealed class BatchService
         foreach (var item in failed)
         {
             CancelRetry(item.Info.Id);
-            manager.Requeue(item);
-            if (queue.IsRunning) queue.Pump();
-            else manager.Start(item);
+            StartPart(item);
         }
         batch.Refresh(ItemsOf(batch));
+    }
+
+    /// <summary>Pause all: parts waiting for a slot stop waiting. They stay queued, for the queue or a Resume.</summary>
+    public void StopWaiting() => _waiting.Clear();
+
+    /// <summary>Resume for batch parts: they start as slots free up, like the rest of the batch, not all at once.</summary>
+    public void StartParts(IEnumerable<DownloadItemViewModel> items)
+    {
+        foreach (var item in items) StartPart(item);
+    }
+
+    /// <summary>Starts a part when there's a free slot: through the queue when it runs, otherwise in turn as downloads end.</summary>
+    private void StartPart(DownloadItemViewModel item)
+    {
+        if (item.IsBusy || item.Status == DownloadStatus.Completed) return;
+        manager.Requeue(item);
+        if (queue.IsRunning)
+        {
+            queue.Pump();
+            return;
+        }
+        if (!_waiting.Contains(item.Info.Id)) _waiting.Add(item.Info.Id);
+        StartWaiting();
+    }
+
+    /// <summary>
+    /// Starts waiting parts, oldest first, while fewer than "downloads at once" are busy: running, or in their browser
+    /// step (a host page being clicked through still holds its slot).
+    /// </summary>
+    private void StartWaiting()
+    {
+        var free = Math.Max(1, settings.Current.MaxConcurrent) - manager.Items.Count(i => i.IsBusy);
+        while (free > 0 && _waiting.Count > 0)
+        {
+            var id = _waiting[0];
+            _waiting.RemoveAt(0);
+            // Gone, started some other way, or paused/failed since: not waiting any more.
+            if (manager.Items.FirstOrDefault(i => i.Info.Id == id) is not { IsBusy: false, Status: DownloadStatus.Queued } item)
+                continue;
+            manager.Start(item);
+            free--;
+        }
     }
 
     /// <summary>Extracts now, even if the batch was made with extracting turned off. Does nothing while a part is running.</summary>
@@ -176,7 +224,14 @@ public sealed class BatchService
         foreach (var cts in _extracting.Values) cts.Cancel();
     }
 
+    /// <summary>Any download ending frees a slot for a waiting part.</summary>
     private void OnEnded(DownloadItemViewModel item)
+    {
+        OnPartEnded(item);
+        StartWaiting();
+    }
+
+    private void OnPartEnded(DownloadItemViewModel item)
     {
         if (Find(item.Info.BatchId) is not { } batch) return;
 
@@ -216,12 +271,13 @@ public sealed class BatchService
     }
 
     /// <summary>
-    /// A part out of its browser step without a link (closed, paused): the batch is looked at again, since it may now
-    /// be all failed.
+    /// A part out of its browser step without a link (closed, paused): its slot is free for the next one, and the batch
+    /// is looked at again, since it may now be all failed.
     /// </summary>
     private void OnBrowserDone(DownloadItemViewModel item)
     {
         if (Find(item.Info.BatchId) is { } batch) Evaluate(batch);
+        StartWaiting();
     }
 
     private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -303,9 +359,7 @@ public sealed class BatchService
             timer.Stop();
             _retryTimers.Remove(id);
             if (item.Status != DownloadStatus.Failed || item.IsBusy || !manager.Items.Contains(item)) return;
-            manager.Requeue(item);
-            if (queue.IsRunning) queue.Pump();
-            else manager.Start(item);
+            StartPart(item);
         };
         _retryTimers[id] = timer;
         timer.Start();

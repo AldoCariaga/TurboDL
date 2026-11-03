@@ -173,7 +173,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanResume))]
     private void Resume()
     {
-        foreach (var item in _selection.Where(i => i.CanResume)) _manager.Start(item);
+        var resumable = _selection.Where(i => i.CanResume).ToList();
+        // Batch parts start as slots free up ("downloads at once"); other downloads start right away, as before.
+        _batches.StartParts(resumable.Where(i => i.Info.BatchId is not null));
+        foreach (var item in resumable.Where(i => i.Info.BatchId is null)) _manager.Start(item);
         NotifyCommands();
     }
 
@@ -191,6 +194,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private void PauseAll()
     {
         Queue.Stop();
+        _batches.StopWaiting(); // first, so the slots the pauses free don't start waiting parts
         // Running, and in the browser step too (the browser closes): everything stops.
         foreach (var item in _manager.Items.Where(i => i.IsBusy).ToList()) _manager.Pause(item);
     }
