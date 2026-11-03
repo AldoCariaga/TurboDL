@@ -8,6 +8,7 @@
     <Project Path="src/TurboDL.Setup/TurboDL.Setup.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/FakeSevenZip/FakeSevenZip.csproj" />
     <Project Path="tests/FakeYtDlp/FakeYtDlp.csproj" />
     <Project Path="tests/JobHost/JobHost.csproj" />
     <Project Path="tests/TurboDL.Core.Tests/TurboDL.Core.Tests.csproj" />
