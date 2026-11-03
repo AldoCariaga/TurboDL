@@ -110,6 +110,7 @@ public sealed class DownloadTask
             _info.Status = DownloadStatus.Failed;
             _info.Error = ex.Message;
             SyncState();
+            _info.ErrorIsTransient = IsTransientFailure(ex);
             Checkpoint?.Invoke(_info);
             if (ex is DownloadFailedException) ExceptionDispatchInfo.Throw(ex);
             throw new DownloadFailedException(ex.Message, ex);
@@ -120,6 +121,7 @@ public sealed class DownloadTask
     {
         _failure = null;
         _info.Error = null;
+        _info.ErrorIsTransient = false;
         _info.Status = DownloadStatus.Downloading;
 
         await PrepareAsync(ct);
@@ -177,6 +179,8 @@ public sealed class DownloadTask
     private async Task PrepareAsync(CancellationToken ct)
     {
         var probe = await ProbeWithRetryAsync(ct);
+        if (_info.ExpectFile && UrlProbe.IsWebPage(probe.ContentType) && !LooksLikePageName(_info.FileName, probe.FileName))
+            throw new HostReturnedPageException(HostPageMessage);
 
         if (string.IsNullOrWhiteSpace(_info.Directory))
             throw new DownloadFailedException("No download folder was set.");
@@ -211,6 +215,19 @@ public sealed class DownloadTask
             _info.FileName = FileNames.MakeUnique(_info.Directory, name);
             _info.Segments = CreateInitialSegments();
         }
+    }
+
+    /// <summary>The error shown when <see cref="DownloadInfo.ExpectFile"/> is set and the host sends a web page.</summary>
+    public const string HostPageMessage =
+        "The host sent a web page instead of the file. The link may have expired, or the site wants you to sign in " +
+        "or solve a CAPTCHA. Open the link in your browser, then add it again with your session cookie.";
+
+    /// <summary>True when the requested name (or, if none was given, the server's name) is itself a web page.</summary>
+    private static bool LooksLikePageName(string requested, string probed)
+    {
+        var name = string.IsNullOrWhiteSpace(requested) ? probed : requested;
+        return name.EndsWith(".htm", StringComparison.OrdinalIgnoreCase)
+               || name.EndsWith(".html", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<ProbeResult> ProbeWithRetryAsync(CancellationToken ct)
@@ -542,6 +559,15 @@ public sealed class DownloadTask
 
     private static bool IsTransient(Exception ex) =>
         ex is HttpRequestException or IOException or TimeoutException or TransientHttpException;
+
+    /// <summary>Whether a failure that ended the download is worth trying again later.</summary>
+    private static bool IsTransientFailure(Exception ex) => ex switch
+    {
+        HostReturnedPageException or RemoteFileChangedException => false,
+        _ when IsTransient(ex) => true,
+        DownloadFailedException { InnerException: { } inner } when IsTransient(inner) => true, // "Gave up after N retries"
+        _ => false,
+    };
 
     private async Task MonitorAsync(CancellationToken ct)
     {

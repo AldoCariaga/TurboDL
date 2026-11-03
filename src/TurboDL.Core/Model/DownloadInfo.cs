@@ -58,6 +58,20 @@ public sealed class DownloadInfo
     /// <summary>yt-dlp settings and progress for <see cref="DownloadKind.Video"/>; null for plain files.</summary>
     public Video.VideoOptions? Video { get; set; }
 
+    /// <summary>The batch this download belongs to, or null.</summary>
+    public long? BatchId { get; set; }
+
+    /// <summary>
+    /// The link must give a file, not a web page. When set, a text/html answer fails the download with
+    /// HostReturnedPageException instead of saving the page. Set for batch downloads.
+    /// Redirects are followed and <see cref="Headers"/> go with them on the same host; when a redirect
+    /// moves to another host, .NET may drop credentials such as the Cookie header, which is deliberate.
+    /// </summary>
+    public bool ExpectFile { get; set; }
+
+    /// <summary>True when the last failure was a network or server hiccup worth retrying later (not a 404, a web page or a changed file).</summary>
+    public bool ErrorIsTransient { get; set; }
+
     [JsonIgnore] public string FilePath => Path.Combine(Directory, FileName);
     [JsonIgnore] public string TempPath => FilePath + ".turbodl";
     [JsonIgnore] public long Downloaded => Video?.DownloadedBytes ?? Segments.Sum(s => s.Position - s.Start);

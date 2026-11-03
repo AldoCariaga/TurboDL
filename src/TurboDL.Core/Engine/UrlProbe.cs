@@ -66,6 +66,15 @@ public static class UrlProbe
             response.Content.Headers.ContentType?.MediaType);
     }
 
+    /// <summary>text/html or application/xhtml+xml: a web page, not a file.</summary>
+    public static bool IsWebPage(string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType)) return false;
+        var media = contentType.Split(';', 2)[0].Trim();
+        return media.Equals("text/html", StringComparison.OrdinalIgnoreCase)
+               || media.Equals("application/xhtml+xml", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string PickFileName(HttpResponseMessage response, Uri finalUrl)
     {
         var cd = response.Content.Headers.ContentDisposition;

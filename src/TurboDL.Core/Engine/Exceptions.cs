@@ -6,6 +6,9 @@ public class DownloadFailedException(string message, Exception? inner = null) : 
 /// <summary>The file on the server is not the one we started downloading (size, ETag or Last-Modified changed).</summary>
 public sealed class RemoteFileChangedException(string message) : DownloadFailedException(message);
 
+/// <summary>The host answered with a web page (sign-in, expired link, CAPTCHA) where a file was expected. Retrying won't help.</summary>
+public sealed class HostReturnedPageException(string message) : DownloadFailedException(message);
+
 /// <summary>Server answered with a status that is worth retrying (408, 429, 5xx).</summary>
 public sealed class TransientHttpException(int statusCode, TimeSpan? retryAfter = null)
     : Exception($"Server returned HTTP {statusCode}.")

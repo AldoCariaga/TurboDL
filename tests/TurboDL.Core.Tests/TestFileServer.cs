@@ -25,6 +25,15 @@ public sealed class TestFileServer : IAsyncDisposable
     public string? ETag { get; set; } = "\"v1\"";
     public string? ContentDisposition { get; set; }
 
+    /// <summary>The Content-Type sent with the file.</summary>
+    public string ContentType { get; set; } = "application/octet-stream";
+
+    /// <summary>
+    /// When set, a request whose Cookie header isn't exactly this gets a 200 sign-in page (text/html, ranges ignored),
+    /// as a host does when the session is missing.
+    /// </summary>
+    public string? RequiredCookie { get; set; }
+
     /// <summary>Server-side cap per response, in bytes/second (0 = none).</summary>
     public int ThrottleBytesPerSecond { get; set; }
 
@@ -42,7 +51,12 @@ public sealed class TestFileServer : IAsyncDisposable
     /// <summary>The headers of every request (probe included), in arrival order.</summary>
     public ConcurrentQueue<Dictionary<string, string>> RequestHeaders { get; } = new();
 
-    public string Url { get; private set; } = "";
+    private string _base = "";
+
+    public string Url => _base + "/file";
+
+    /// <summary>A link that answers with <paramref name="hops"/> 302 redirects before reaching /file.</summary>
+    public string RedirectUrl(int hops) => _base + "/r/" + (hops - 1);
 
     private TestFileServer(byte[] data)
     {
@@ -52,15 +66,24 @@ public sealed class TestFileServer : IAsyncDisposable
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         _app = builder.Build();
         _app.MapGet("/file", Handle);
+        _app.MapGet("/r/{n:int}", (HttpContext ctx, int n) =>
+        {
+            RecordHeaders(ctx);
+            ctx.Response.StatusCode = 302;
+            ctx.Response.Headers.Location = n > 0 ? $"/r/{n - 1}" : "/file";
+        });
     }
 
     public static async Task<TestFileServer> StartAsync(byte[] data)
     {
         var server = new TestFileServer(data);
         await server._app.StartAsync();
-        server.Url = server._app.Urls.First() + "/file";
+        server._base = server._app.Urls.First();
         return server;
     }
+
+    private void RecordHeaders(HttpContext ctx) =>
+        RequestHeaders.Enqueue(ctx.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString(), StringComparer.OrdinalIgnoreCase));
 
     public static byte[] RandomBytes(int size)
     {
@@ -71,13 +94,21 @@ public sealed class TestFileServer : IAsyncDisposable
 
     private async Task Handle(HttpContext ctx)
     {
-        RequestHeaders.Enqueue(ctx.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString(), StringComparer.OrdinalIgnoreCase));
+        RecordHeaders(ctx);
         var res = ctx.Response;
+        if (RequiredCookie is not null && ctx.Request.Headers.Cookie.ToString() != RequiredCookie)
+        {
+            res.StatusCode = 200;
+            res.ContentType = "text/html; charset=utf-8";
+            await res.WriteAsync("<!doctype html><html><body>Please sign in</body></html>");
+            return;
+        }
+
         var len = (long)Data.Length;
         if (ETag is not null) res.Headers.ETag = ETag;
         if (ContentDisposition is not null) res.Headers.ContentDisposition = ContentDisposition;
         res.Headers.AcceptRanges = SupportRanges ? "bytes" : "none";
-        res.ContentType = "application/octet-stream";
+        res.ContentType = ContentType;
 
         long from = 0, to = len - 1;
         var range = ctx.Request.Headers.Range.ToString();

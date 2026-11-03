@@ -275,4 +275,144 @@ public sealed class DownloadTaskTests : IDisposable
         Assert.InRange(sw.Elapsed.TotalSeconds, 2.5, 4.5);
         Assert.Equal(Hash(data), Hash(info.FilePath));
     }
+
+    [Fact]
+    public async Task ExpectFile_HtmlResponse_FailsWithHostPage_NoRetries()
+    {
+        await using var server = await TestFileServer.StartAsync(TestFileServer.RandomBytes(50_000));
+        server.ContentType = "text/html";
+        var info = NewInfo(server.Url);
+        info.ExpectFile = true;
+
+        var ex = await Assert.ThrowsAsync<HostReturnedPageException>(
+            () => new DownloadTask(info, Http, FastOptions).RunAsync(CancellationToken.None));
+
+        Assert.Equal(DownloadTask.HostPageMessage, ex.Message);
+        Assert.Equal(DownloadStatus.Failed, info.Status);
+        Assert.False(info.ErrorIsTransient);
+        Assert.Single(server.RequestHeaders); // the probe only
+        Assert.True(!Directory.Exists(_dir) || !Directory.EnumerateFiles(_dir, "*.turbodl").Any());
+    }
+
+    [Fact]
+    public async Task WithoutExpectFile_HtmlResponse_Downloads()
+    {
+        var data = TestFileServer.RandomBytes(50_000);
+        await using var server = await TestFileServer.StartAsync(data);
+        server.ContentType = "text/html";
+        var info = NewInfo(server.Url);
+
+        await new DownloadTask(info, Http, FastOptions).RunAsync(CancellationToken.None);
+
+        Assert.Equal(DownloadStatus.Completed, info.Status);
+        Assert.Equal(Hash(data), Hash(info.FilePath));
+    }
+
+    [Fact]
+    public async Task ExpectFile_HtmlName_IsAllowed()
+    {
+        var data = TestFileServer.RandomBytes(50_000);
+        await using var server = await TestFileServer.StartAsync(data);
+        server.ContentType = "text/html";
+        var info = NewInfo(server.Url);
+        info.ExpectFile = true;
+        info.FileName = "page.html";
+
+        await new DownloadTask(info, Http, FastOptions).RunAsync(CancellationToken.None);
+
+        Assert.Equal(DownloadStatus.Completed, info.Status);
+        Assert.Equal("page.html", info.FileName);
+        Assert.Equal(Hash(data), Hash(info.FilePath));
+    }
+
+    [Fact]
+    public async Task RequiredCookie_Missing_FailsAsHostPage()
+    {
+        await using var server = await TestFileServer.StartAsync(TestFileServer.RandomBytes(50_000));
+        server.RequiredCookie = "sid=1";
+        var info = NewInfo(server.Url);
+        info.ExpectFile = true;
+
+        await Assert.ThrowsAsync<HostReturnedPageException>(
+            () => new DownloadTask(info, Http, FastOptions).RunAsync(CancellationToken.None));
+        Assert.Equal(DownloadStatus.Failed, info.Status);
+        Assert.False(info.ErrorIsTransient);
+    }
+
+    [Fact]
+    public async Task RequiredCookie_Sent_Downloads()
+    {
+        var data = TestFileServer.RandomBytes(2 * 1024 * 1024);
+        await using var server = await TestFileServer.StartAsync(data);
+        server.RequiredCookie = "sid=1";
+        var info = NewInfo(server.Url, connections: 4);
+        info.ExpectFile = true;
+        info.Headers["Cookie"] = "sid=1";
+
+        await new DownloadTask(info, Http, FastOptions).RunAsync(CancellationToken.None);
+
+        Assert.Equal(DownloadStatus.Completed, info.Status);
+        Assert.Equal(Hash(data), Hash(info.FilePath));
+        Assert.NotEmpty(server.RequestHeaders);
+        Assert.All(server.RequestHeaders, h => Assert.Equal("sid=1", h.GetValueOrDefault("Cookie")));
+    }
+
+    [Fact]
+    public async Task RedirectChain_FollowsAndKeepsCookie()
+    {
+        var data = TestFileServer.RandomBytes(2 * 1024 * 1024);
+        await using var server = await TestFileServer.StartAsync(data);
+        server.RequiredCookie = "sid=1";
+        var info = NewInfo(server.RedirectUrl(3), connections: 4);
+        info.ExpectFile = true;
+        info.Headers["Cookie"] = "sid=1";
+
+        await new DownloadTask(info, Http, FastOptions).RunAsync(CancellationToken.None);
+
+        Assert.Equal(DownloadStatus.Completed, info.Status);
+        Assert.Equal(Hash(data), Hash(info.FilePath));
+        Assert.EndsWith("/file", info.FinalUrl);
+        // Probe plus at least one data request, each going through 3 redirects first.
+        Assert.True(server.RequestHeaders.Count >= 8, $"expected 8+ requests, got {server.RequestHeaders.Count}");
+        Assert.All(server.RequestHeaders, h => Assert.Equal("sid=1", h.GetValueOrDefault("Cookie")));
+    }
+
+    [Fact]
+    public async Task TransientFailure_IsMarkedTransient()
+    {
+        await using var server = await TestFileServer.StartAsync(TestFileServer.RandomBytes(1024 * 1024));
+        server.AbortRequests = int.MaxValue;
+        server.AbortAfterBytes = 10;
+        var info = NewInfo(server.Url, connections: 1);
+        var options = FastOptions with { MaxRetries = 1, RetryMaxDelay = TimeSpan.FromMilliseconds(50) };
+
+        await Assert.ThrowsAsync<DownloadFailedException>(
+            () => new DownloadTask(info, Http, options).RunAsync(CancellationToken.None));
+        Assert.Equal(DownloadStatus.Failed, info.Status);
+        Assert.True(info.ErrorIsTransient);
+    }
+
+    [Fact]
+    public async Task Http404_IsNotTransient()
+    {
+        await using var server = await TestFileServer.StartAsync([1, 2, 3]);
+        var info = NewInfo(server.Url.Replace("/file", "/missing"));
+
+        await Assert.ThrowsAsync<DownloadFailedException>(
+            () => new DownloadTask(info, Http, FastOptions).RunAsync(CancellationToken.None));
+        Assert.Equal(DownloadStatus.Failed, info.Status);
+        Assert.False(info.ErrorIsTransient);
+    }
+
+    [Fact]
+    public void OldJson_WithoutNewFields_LoadsWithDefaults()
+    {
+        const string json = """{"Id":7,"Url":"http://example.com/a.zip","FileName":"a.zip","Error":"x"}""";
+
+        var info = System.Text.Json.JsonSerializer.Deserialize<DownloadInfo>(json)!;
+
+        Assert.Null(info.BatchId);
+        Assert.False(info.ExpectFile);
+        Assert.False(info.ErrorIsTransient);
+    }
 }
