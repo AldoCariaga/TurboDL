@@ -7,7 +7,7 @@ namespace TurboDL.App.Services;
 
 /// <summary>
 /// Serves this user's <c>TurboDL.Ipc.&lt;SID&gt;</c> pipe: second launches and the browser's native host send
-/// <c>add</c>, <c>addVideo</c>, <c>show</c> and <c>getConfig</c> here. Requests run on the UI thread; <c>add</c> and
+/// <c>add</c>, <c>addVideo</c>, <c>show</c> and <c>getConfig</c> here, and TurboDL Setup sends <c>quit</c>. Requests run on the UI thread; <c>add</c> and
 /// <c>addVideo</c> reply at once and open the Add dialog afterwards, so the caller never waits on the user.
 /// </summary>
 public sealed class IpcServer(AddDownloadPrompt addPrompt, SettingsService settings, ILogger<IpcServer> log)
@@ -78,6 +78,10 @@ public sealed class IpcServer(AddDownloadPrompt addPrompt, SettingsService setti
                 return IpcReply.Success();
             case IpcCommands.Show:
                 WindowService.ShowMain();
+                return IpcReply.Success();
+            case IpcCommands.Quit:
+                // After the reply, so the caller (TurboDL Setup) hears ok before the pipe closes.
+                dispatcher.BeginInvoke(() => (Application.Current as App)?.RequestExit());
                 return IpcReply.Success();
             case IpcCommands.GetConfig:
                 var current = settings.Current;

@@ -371,4 +371,14 @@ public sealed class BrowserHeadersTests : IDisposable
             Assert.Equal("Mozilla/5.0 TurboDL-Test", h["User-Agent"]);
         });
     }
+
+    [Fact]
+    public void Quit_IsKnown_Valid_AndRoundTrips()
+    {
+        Assert.True(IpcCommands.IsKnown("quit"));
+        Assert.Equal("""{"type":"quit"}""", IpcJson.Serialize(IpcRequest.Quit()));
+        var parsed = IpcJson.ParseRequest("""{"type":"quit"}""");
+        Assert.Equal(IpcCommands.Quit, parsed.Type);
+        Assert.Null(parsed.Validate());
+    }
 }

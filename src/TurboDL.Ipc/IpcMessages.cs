@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace TurboDL.Core.Ipc;
 
@@ -12,12 +12,19 @@ public static class IpcCommands
     /// <summary>A video page (or a video on it) for yt-dlp: opens the Add dialog in video mode.</summary>
     public const string AddVideo = "addVideo";
 
-    public static bool IsKnown(string? type) => type is Add or Show or GetConfig or AddVideo;
+    /// <summary>
+    /// Quit TurboDL as tray > Exit does (downloads pause and resume later). For local callers only (TurboDL Setup,
+    /// before it replaces the files): the native host refuses it, so a web page can't close the app.
+    /// </summary>
+    public const string Quit = "quit";
+
+    public static bool IsKnown(string? type) => type is Add or Show or GetConfig or AddVideo or Quit;
 }
 
 /// <summary>
 /// One request line: <c>{"type":"add","url","filename?","referrer?","userAgent?","cookies?","size?"}</c>,
-/// <c>{"type":"addVideo","url","pageUrl?","referrer?","userAgent?","cookies?"}</c>, <c>{"type":"show"}</c> or <c>{"type":"getConfig"}</c>.
+/// <c>{"type":"addVideo","url","pageUrl?","referrer?","userAgent?","cookies?"}</c>, <c>{"type":"show"}</c>,
+/// <c>{"type":"getConfig"}</c> or <c>{"type":"quit"}</c>.
 /// </summary>
 public sealed class IpcRequest
 {
@@ -43,6 +50,8 @@ public sealed class IpcRequest
     public static IpcRequest Show() => new() { Type = IpcCommands.Show };
 
     public static IpcRequest GetConfig() => new() { Type = IpcCommands.GetConfig };
+
+    public static IpcRequest Quit() => new() { Type = IpcCommands.Quit };
 
     public static IpcRequest Add(string url, string? filename = null, string? referrer = null, string? userAgent = null,
         string? cookies = null, long? size = null) =>

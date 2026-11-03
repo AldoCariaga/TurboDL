@@ -25,6 +25,8 @@ public sealed class NativeHostLoop(IAppLauncher launcher, HostLog log)
 
     public const string NotRunning = "TurboDL is not running";
 
+    public const string QuitRefused = "\"quit\" isn't allowed from the browser.";
+
     /// <summary>Null = this user's pipe.</summary>
     public string? PipeName { get; init; }
 
@@ -75,6 +77,13 @@ public sealed class NativeHostLoop(IAppLauncher launcher, HostLog log)
         {
             log.Write($"Bad JSON from Chrome: {ex.Message}");
             return Fail($"Bad JSON: {ex.Message}");
+        }
+
+        // quit is for TurboDL Setup on this PC; a web page talking to the extension must never close the app.
+        if (type.Equals(IpcCommands.Quit, StringComparison.OrdinalIgnoreCase))
+        {
+            log.Write($"{type}: refused, not allowed from the browser.");
+            return Fail(QuitRefused);
         }
 
         try

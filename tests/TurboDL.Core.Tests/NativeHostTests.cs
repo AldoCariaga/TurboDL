@@ -271,4 +271,26 @@ public sealed class NativeHostTests : IAsyncDisposable
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Theory]
+    [InlineData("""{"type":"quit"}""")]
+    [InlineData("""{"type":"Quit"}""")]
+    [InlineData("""{"TYPE":"quit"}""")]
+    public async Task Quit_FromTheBrowser_IsRefused_NeverForwarded_NeverLaunches(string message)
+    {
+        StartApp();
+        var launcher = new FakeLauncher();
+        var reply = IpcJson.ParseReply(await Host(launcher).HandleAsync(message));
+
+        Assert.False(reply.Ok);
+        Assert.Equal(NativeHostLoop.QuitRefused, reply.Error);
+        Assert.Empty(_received);
+        Assert.Equal(0, launcher.Launches);
+
+        await _app!.DisposeAsync();
+        _app = null;
+        reply = IpcJson.ParseReply(await Host(launcher).HandleAsync(message));
+        Assert.Equal(NativeHostLoop.QuitRefused, reply.Error);
+        Assert.Equal(0, launcher.Launches);
+    }
 }
