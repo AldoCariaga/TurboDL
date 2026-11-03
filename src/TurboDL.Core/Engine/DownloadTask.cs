@@ -42,6 +42,7 @@ public sealed class DownloadTask
     private readonly DownloadOptions _opt;
     private readonly RateLimiter? _globalLimiter;
     private readonly RateLimiter _localLimiter;
+    private readonly HostThrottle? _throttle;
 
     private readonly Lock _gate = new();
     private List<Segment> _segments = [];
@@ -52,8 +53,11 @@ public sealed class DownloadTask
     private int _liveWorkers; // worker loops still running; guarded by _gate
     private double _speed;
 
-    public DownloadTask(DownloadInfo info, HttpClient http, DownloadOptions? options = null, RateLimiter? globalLimiter = null)
+    /// <param name="hostThrottle">Shared by all downloads, to space out starts on a host and wait together when it says 429.</param>
+    public DownloadTask(DownloadInfo info, HttpClient http, DownloadOptions? options = null, RateLimiter? globalLimiter = null,
+        HostThrottle? hostThrottle = null)
     {
+        _throttle = hostThrottle;
         _info = info;
         _http = http;
         _opt = options ?? new DownloadOptions();
@@ -238,7 +242,10 @@ public sealed class DownloadTask
             {
                 try
                 {
-                    return await UrlProbe.ProbeAsync(_http, _info.Url, _info.Headers, ct);
+                    if (_throttle is not null) await _throttle.WaitToStartAsync(_info.Url, ct);
+                    var probe = await UrlProbe.ProbeAsync(_http, _info.Url, _info.Headers, ct);
+                    _throttle?.Succeeded(_info.Url);
+                    return probe;
                 }
                 catch (OperationCanceledException oce) when (!ct.IsCancellationRequested)
                 {
@@ -249,9 +256,19 @@ public sealed class DownloadTask
             catch (Exception ex) when (IsTransient(ex) && !ct.IsCancellationRequested && attempt <= _opt.MaxRetries)
             {
                 Log?.Invoke($"Probe: {ex.GetBaseException().Message} Retry {attempt}.");
+                LogHostBackoff(ex);
                 await Task.Delay(RetryDelay(attempt), ct);
             }
         }
+    }
+
+    /// <summary>A 429/503: the whole host waits (see <see cref="HostThrottle"/>), not just this request.</summary>
+    private void LogHostBackoff(Exception ex)
+    {
+        if (_throttle is null || ex is not TransientHttpException { IsBusy: true } busy) return;
+        var wait = _throttle.Backoff(_info.Url, busy.RetryAfter);
+        if (wait > TimeSpan.Zero)
+            Log?.Invoke($"The host is limiting requests (HTTP {busy.StatusCode}); every download from it waits {wait.TotalSeconds:0} s.");
     }
 
     private TimeSpan RetryDelay(int attempt) =>
@@ -442,6 +459,7 @@ public sealed class DownloadTask
             }
             catch (Exception ex) when (IsTransient(ex) && !claim.IsCancellationRequested)
             {
+                LogHostBackoff(ex);
                 var live = -1;
                 lock (_gate)
                 {
@@ -488,6 +506,9 @@ public sealed class DownloadTask
             to = seg.End;
         }
 
+        // Before the read timeout starts: waiting out a host's backoff isn't a stalled connection.
+        if (_throttle is not null) await _throttle.WaitIfBackingOffAsync(_info.Url, ct);
+
         using var request = new HttpRequestMessage(HttpMethod.Get, _info.Url);
         TurboHttp.ApplyHeaders(request, _info.Headers);
         if (_info.SupportsRanges)
@@ -501,6 +522,7 @@ public sealed class DownloadTask
             using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stall.Token);
             var code = (int)response.StatusCode;
             if (code is 408 or 429 or >= 500) throw TransientHttpException.From(response);
+            _throttle?.Succeeded(_info.Url);
             if (!response.IsSuccessStatusCode)
                 throw new ServerRefusedException(code, $"Server returned HTTP {code} {response.ReasonPhrase}.");
             if (_info.SupportsRanges && response.StatusCode != HttpStatusCode.PartialContent)

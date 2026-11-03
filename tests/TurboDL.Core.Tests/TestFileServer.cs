@@ -37,6 +37,15 @@ public sealed class TestFileServer : IAsyncDisposable
     /// <summary>When set, every request gets this status and no file, as a host does with requests it won't serve.</summary>
     public int? RefuseWith { get; set; }
 
+    /// <summary>The next this-many requests (probes included) get 429 Too Many Requests, with <see cref="BusyRetryAfterSeconds"/>.</summary>
+    public int BusyRequests { set => _busyLeft = value; }
+    private int _busyLeft;
+    public int? BusyRetryAfterSeconds { get; set; }
+
+    /// <summary>When each request arrived (probe included), in arrival order, and when each 429 was sent.</summary>
+    public ConcurrentQueue<DateTime> RequestTimes { get; } = new();
+    public ConcurrentQueue<DateTime> BusyTimes { get; } = new();
+
     /// <summary>Server-side cap per response, in bytes/second (0 = none).</summary>
     public int ThrottleBytesPerSecond { get; set; }
 
@@ -85,8 +94,11 @@ public sealed class TestFileServer : IAsyncDisposable
         return server;
     }
 
-    private void RecordHeaders(HttpContext ctx) =>
+    private void RecordHeaders(HttpContext ctx)
+    {
+        RequestTimes.Enqueue(DateTime.UtcNow);
         RequestHeaders.Enqueue(ctx.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString(), StringComparer.OrdinalIgnoreCase));
+    }
 
     public static byte[] RandomBytes(int size)
     {
@@ -102,6 +114,13 @@ public sealed class TestFileServer : IAsyncDisposable
         if (RefuseWith is { } refusal)
         {
             res.StatusCode = refusal;
+            return;
+        }
+        if (Interlocked.Decrement(ref _busyLeft) >= 0)
+        {
+            res.StatusCode = 429;
+            if (BusyRetryAfterSeconds is { } seconds) res.Headers.RetryAfter = seconds.ToString();
+            BusyTimes.Enqueue(DateTime.UtcNow);
             return;
         }
         if (RequiredCookie is not null && ctx.Request.Headers.Cookie.ToString() != RequiredCookie)
