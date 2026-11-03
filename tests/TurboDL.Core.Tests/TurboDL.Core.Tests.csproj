@@ -27,6 +27,8 @@
     <ProjectReference Include="..\..\src\TurboDL.NativeHost\TurboDL.NativeHost.csproj" />
     <!-- The fake yt-dlp.exe the video tests run; its exe, dll and runtimeconfig land next to the tests. -->
     <ProjectReference Include="..\FakeYtDlp\FakeYtDlp.csproj" />
+    <!-- Stands in for TurboDL in JobObjectTests, so the test can kill it hard; it lands next to the tests too. -->
+    <ProjectReference Include="..\JobHost\JobHost.csproj" />
   </ItemGroup>
 
 </Project>

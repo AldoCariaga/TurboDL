@@ -8,7 +8,8 @@ public sealed record ToolRunResult(int ExitCode, bool TimedOut, IReadOnlyList<st
 
 /// <summary>
 /// Runs yt-dlp (or another console tool) with no window, UTF-8 I/O, and lines streamed to callbacks.
-/// Cancelling or timing out kills the whole process tree, so ffmpeg children don't outlive it.
+/// Cancelling or timing out kills the whole process tree, so ffmpeg children don't outlive it, and every run is in
+/// <see cref="JobObject.Tools"/>, so nothing outlives TurboDL either.
 /// </summary>
 public static class ToolProcess
 {
@@ -43,6 +44,11 @@ public static class ToolProcess
 
         using var process = new Process { StartInfo = psi };
         process.Start();
+        // Into TurboDL's kill-on-close job, so the tool and everything it starts die with TurboDL even if it crashes
+        // or is killed. Process.Start can't create it suspended, so there's a short window between start and here:
+        // a child the tool starts in that window (yt-dlp takes far longer than that to reach ffmpeg) or a TurboDL
+        // crash inside it would escape the job. If Windows refuses the job, the cancel/timeout tree kill below still applies.
+        JobObject.Tools?.TryAdd(process);
         // yt-dlp never needs input; closing stdin means a prompt can't hang it.
         process.StandardInput.Close();
 
