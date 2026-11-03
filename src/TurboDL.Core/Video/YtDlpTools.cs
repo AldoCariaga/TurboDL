@@ -1,6 +1,4 @@
 using System.IO.Compression;
-using System.Net;
-using System.Net.Http.Headers;
 using System.Text.Json;
 using TurboDL.Core.Engine;
 
@@ -77,7 +75,6 @@ public sealed record ToolUpdateResult
 public sealed class YtDlpTools
 {
     private const string VersionsFile = "versions.json";
-    private const int BufferSize = 1 << 16;
 
     private readonly HttpClient _http;
     private readonly ToolSources _sources;
@@ -261,81 +258,8 @@ public sealed class YtDlpTools
         var expected = Checksums.FindSha256(sums, asset)
             ?? throw new ToolSetupException($"{checksumsAsset} in {repo} {tag} doesn't list {asset}.");
 
-        var part = Path.Combine(Directory, asset + ".part");
-        var url = ReleaseUrl(repo, tag, asset);
-        for (var attempt = 0; ; attempt++)
-        {
-            var resumed = await DownloadToPartAsync(tool, url, part, progress, ct).ConfigureAwait(false);
-            progress?.Report(new ToolSetupProgress(tool, ToolSetupStage.Verifying));
-            var actual = await Checksums.Sha256OfFileAsync(part, ct).ConfigureAwait(false);
-            if (actual == expected) return part;
-
-            File.Delete(part);
-            // A leftover .part may belong to an older build of the same file name; one clean retry settles it.
-            if (!resumed || attempt > 0) throw new ChecksumMismatchException(asset, expected, actual);
-        }
-    }
-
-    /// <summary>Returns true when it carried on from an existing partial file.</summary>
-    private async Task<bool> DownloadToPartAsync(string tool, string url, string part, IProgress<ToolSetupProgress>? progress,
-        CancellationToken ct)
-    {
-        var existing = File.Exists(part) ? new FileInfo(part).Length : 0;
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        TurboHttp.ApplyHeaders(request, null);
-        if (existing > 0) request.Headers.Range = new RangeHeaderValue(existing, null);
-
-        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-        if (existing > 0 && response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
-        {
-            if (response.Content.Headers.ContentRange?.Length == existing) return true; // Already complete.
-            // Longer than the file on the server: a leftover from something else. Start over.
-            File.Delete(part);
-            return await DownloadToPartAsync(tool, url, part, progress, ct).ConfigureAwait(false);
-        }
-        if (!response.IsSuccessStatusCode)
-            throw new ToolSetupException($"Downloading {Path.GetFileName(url)} failed: HTTP {(int)response.StatusCode}.");
-
-        var resumed = existing > 0 && response.StatusCode == HttpStatusCode.PartialContent;
-        if (!resumed) existing = 0;
-        long? total = response.Content.Headers.ContentRange?.Length
-                      ?? (response.Content.Headers.ContentLength is { } len ? existing + len : null);
-
-        await using var file = new FileStream(part, resumed ? FileMode.Append : FileMode.Create, FileAccess.Write,
-            FileShare.None, BufferSize, useAsync: true);
-        await using var body = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-
-        var buffer = new byte[BufferSize];
-        var received = existing;
-        var lastReport = DateTime.MinValue;
-        progress?.Report(new ToolSetupProgress(tool, ToolSetupStage.Downloading, received, total));
-        using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        while (true)
-        {
-            stall.CancelAfter(StallTimeout);
-            int n;
-            try
-            {
-                n = await body.ReadAsync(buffer, stall.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                throw new ToolSetupException(
-                    $"Downloading {Path.GetFileName(url)} stalled (nothing for {StallTimeout.TotalSeconds:0} s). Try again to resume.");
-            }
-            if (n == 0) break;
-            await file.WriteAsync(buffer.AsMemory(0, n), ct).ConfigureAwait(false);
-            received += n;
-            if (DateTime.UtcNow - lastReport > TimeSpan.FromMilliseconds(250))
-            {
-                lastReport = DateTime.UtcNow;
-                progress?.Report(new ToolSetupProgress(tool, ToolSetupStage.Downloading, received, total));
-            }
-        }
-        progress?.Report(new ToolSetupProgress(tool, ToolSetupStage.Downloading, received, total));
-        if (total is { } t && received != t)
-            throw new ToolSetupException($"Downloading {Path.GetFileName(url)} ended early ({received:N0} of {t:N0} bytes). Try again to resume.");
-        return resumed;
+        return await ToolDownloads.DownloadVerifiedAsync(_http, tool, ReleaseUrl(repo, tag, asset),
+            Path.Combine(Directory, asset + ".part"), expected, asset, StallTimeout, progress, ct).ConfigureAwait(false);
     }
 
     private async Task<string> GetStringAsync(string url, CancellationToken ct)
