@@ -7,6 +7,9 @@ using TurboDL.Core.Video;
 
 namespace TurboDL.App.ViewModels;
 
+/// <summary>Where a download is in the browser step (a file host's page being clicked through).</summary>
+public enum BrowserStage { None, Waiting, Open }
+
 /// <summary>
 /// One row in the list. Wraps the persisted <see cref="DownloadInfo"/> and, while it runs, its <see cref="DownloadTask"/>.
 /// Values are pulled from the engine's snapshot by <see cref="Refresh"/> on the UI thread, never pushed from engine threads.
@@ -62,10 +65,33 @@ public sealed partial class DownloadItemViewModel : ObservableObject
     public bool IsRunning => Task is not null || VideoJob is not null;
     public bool IsVideo => Info.Kind == DownloadKind.Video;
 
+    /// <summary>Waiting for the browser, or in it. Set by the manager only.</summary>
+    internal BrowserStage Browser { get; private set; }
+
+    /// <summary>Cancels the browser step (Pause); null outside it.</summary>
+    internal CancellationTokenSource? BrowserCts { get; set; }
+
+    /// <summary>The order this download joined the wait for the browser in.</summary>
+    internal long BrowserTicket { get; set; }
+
+    public bool InBrowser => Browser != BrowserStage.None;
+
+    /// <summary>
+    /// Running, or in its browser step: either way it holds one of the "downloads at once" slots, and Pause stops it.
+    /// The browser step is part of getting the file, so a host page doesn't free the slot for the next link.
+    /// </summary>
+    public bool IsBusy => IsRunning || InBrowser;
+
     /// <summary>Video items: what was asked for, e.g. "Up to 1080p · mp4".</summary>
     public string VideoDescription => Info.Video?.Describe() ?? "";
-    public bool CanResume => !IsRunning && Status is DownloadStatus.Paused or DownloadStatus.Failed or DownloadStatus.Queued;
-    public bool CanPause => IsRunning;
+    public bool CanResume => !IsBusy && Status is DownloadStatus.Paused or DownloadStatus.Failed or DownloadStatus.Queued;
+    public bool CanPause => IsBusy;
+
+    internal void SetBrowser(BrowserStage stage)
+    {
+        Browser = stage;
+        Refresh();
+    }
 
     internal void Attach(DownloadTask task, CancellationTokenSource cts, Task engineRun)
     {
@@ -141,6 +167,8 @@ public sealed partial class DownloadItemViewModel : ObservableObject
             DownloadStatus.Failed => "Failed",
             _ => "",
         };
+        if (task is null && Browser != BrowserStage.None)
+            StatusText = Browser == BrowserStage.Open ? "In browser" : "Waiting for browser";
 
         RaiseStateChanged();
     }
@@ -193,6 +221,7 @@ public sealed partial class DownloadItemViewModel : ObservableObject
     private void RaiseStateChanged()
     {
         OnPropertyChanged(nameof(IsRunning));
+        OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanPause));
         OnPropertyChanged(nameof(VideoDescription));

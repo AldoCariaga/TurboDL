@@ -62,6 +62,16 @@ public sealed partial class AddDownloadViewModel(
     private VideoInfo? _video;
     private bool _skipVideoSetup;
 
+    /// <summary>
+    /// The link answered with a web page that has no video: a file host's waiting page. The download is then added as
+    /// one that must give a file, so when it starts TurboDL sees the page and opens it in a browser to click through.
+    /// </summary>
+    private bool _hostPage;
+
+    private const string HostPageNote =
+        "This link opens a web page, not the file. TurboDL will open it in a browser and click through to the file; " +
+        "solve any CAPTCHA or sign-in there yourself.";
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartNowCommand), nameof(AddToQueueCommand))]
     public partial string Url { get; set; } = "";
@@ -252,16 +262,20 @@ public sealed partial class AddDownloadViewModel(
     {
         Abandon();
         if (!TryParse(Url, out var uri)) return;
+        var name = string.IsNullOrWhiteSpace(FileName) ? "" : FileNames.Sanitize(FileName);
         Result = IsVideoMode && _video is not null && _videoUrl is not null
             ? VideoResult()
             : new DownloadInfo
             {
                 Url = uri.ToString(),
-                FileName = string.IsNullOrWhiteSpace(FileName) ? "" : FileNames.Sanitize(FileName),
+                FileName = name,
                 Directory = Folder.Trim(),
                 Category = Category,
                 Connections = (int)Math.Clamp(Connections ?? 8, 1, 32),
                 Headers = new Dictionary<string, string>(_headers),
+                ExpectFile = _hostPage,
+                // After the browser finds the file: a name the user typed stays, otherwise the server names it.
+                RequestedFileName = _hostPage ? (_nameEdited ? name : "") : null,
             };
         StartImmediately = start;
         CloseRequested?.Invoke();
@@ -316,6 +330,7 @@ public sealed partial class AddDownloadViewModel(
         try
         {
             await Task.Delay(350, ct); // let typing settle
+            _hostPage = false;
             IsChecking = true;
             SetNote("Checking the link…", NoteKind.Neutral);
             ProbeResult probe;
@@ -328,6 +343,14 @@ public sealed partial class AddDownloadViewModel(
                 // Some video sites refuse plain requests; yt-dlp may still get through. Only worth it if it's installed.
                 if (videoTools.IsInstalled && await TryVideoAsync(url, null, ct)) return;
                 if (ct.IsCancellationRequested) return;
+                if (ex is ServerRefusedException { MayNeedBrowser: true } refused)
+                {
+                    // File hosts often refuse anything that isn't a browser; one may still get through.
+                    _hostPage = true;
+                    SetNote($"The host refused TurboDL's request (HTTP {refused.StatusCode}). TurboDL will open the link in a " +
+                            "browser and click through to the file. If the link is gone, just close the browser.", NoteKind.Warning);
+                    return;
+                }
                 SetNote($"Couldn't check the link: {ex.GetBaseException().Message} You can still add it and TurboDL will retry.",
                     NoteKind.Error);
                 return;
@@ -343,8 +366,16 @@ public sealed partial class AddDownloadViewModel(
             if (IsPage(probe.ContentType))
             {
                 if (await TryVideoAsync(url, null, ct)) return;
-                // Only the "looking for a video" status gives way to the file note; a warning about setup stays.
-                if (!ct.IsCancellationRequested && !IsVideoMode && NoteKind == NoteKind.Neutral) SetNote(fileNote, fileKind);
+                if (ct.IsCancellationRequested || IsVideoMode) return;
+                // No video: a file host's waiting page. The page's own name (often "archive.rar.html") isn't the file's.
+                _hostPage = UrlProbe.IsWebPage(probe.ContentType);
+                if (_hostPage && !_nameEdited) SetQuietly(() => FileName = WithoutPageExtension(FileName));
+                // Only the "looking for a video" status gives way; a warning about setup stays.
+                if (NoteKind == NoteKind.Neutral)
+                {
+                    if (_hostPage) SetNote(HostPageNote, NoteKind.Neutral);
+                    else SetNote(fileNote, fileKind);
+                }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -500,6 +531,12 @@ public sealed partial class AddDownloadViewModel(
         if (resumable) return ($"{size}, can pause and resume", NoteKind.Neutral);
         return ($"{size}. The server doesn't allow resuming, so this downloads on one connection.", NoteKind.Warning);
     }
+
+    /// <summary>"archive.rar.html" → "archive.rar", "abc123.htm" → "abc123"; other names as they are.</summary>
+    private static string WithoutPageExtension(string name) =>
+        name.EndsWith(".html", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".htm", StringComparison.OrdinalIgnoreCase)
+            ? Path.GetFileNameWithoutExtension(name)
+            : name;
 
     private static bool IsPage(string? contentType) =>
         contentType is not null

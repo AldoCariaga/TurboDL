@@ -3,6 +3,8 @@ using System.IO;
 using System.Net.Http;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
+using TurboDL.Core.Archives;
+using TurboDL.Core.Browser;
 using TurboDL.Core.Engine;
 using TurboDL.Core.Model;
 using TurboDL.Core.Storage;
@@ -27,19 +29,36 @@ public sealed class DownloadManager
     private readonly Dispatcher _ui = Dispatcher.CurrentDispatcher;
     private readonly HttpClient http;
     private readonly RateLimiter globalLimiter;
+
+    /// <summary>One for every download, so many links to one host don't flood it (a batch of 79 parts starting at once).</summary>
+    private readonly HostThrottle hostThrottle = new();
     private readonly DownloadStore store;
     private readonly IUserPrompts prompts;
     private readonly VideoToolsService videoTools;
+    private readonly BrowserCapture browser;
     private readonly ILogger<DownloadManager> log;
 
+    /// <summary>One browser window at a time: a batch whose parts all hit a host page asks for them one by one.</summary>
+    private readonly SemaphoreSlim _browserGate = new(1, 1);
+
+    /// <summary>Numbers each wait for the browser, in order.</summary>
+    private long _browserTickets;
+
+    /// <summary>
+    /// Batch id → waits numbered below this are skipped: the user closed the browser without a download while they
+    /// were waiting, which means "stop", not "next part". Later ones (Retry failed parts) open again.
+    /// </summary>
+    private readonly Dictionary<long, long> _browserSkip = [];
+
     public DownloadManager(HttpClient http, RateLimiter globalLimiter, DownloadStore store, IUserPrompts prompts,
-        VideoToolsService videoTools, SettingsService settings, ILogger<DownloadManager> log)
+        VideoToolsService videoTools, BrowserCapture browser, SettingsService settings, ILogger<DownloadManager> log)
     {
         this.http = http;
         this.globalLimiter = globalLimiter;
         this.store = store;
         this.prompts = prompts;
         this.videoTools = videoTools;
+        this.browser = browser;
         this.log = log;
         // yt-dlp takes its cap on the command line, so a new global limit means restarting running videos.
         settings.Changed += _ =>
@@ -62,6 +81,15 @@ public sealed class DownloadManager
 
     /// <summary>Raised on the UI thread whenever a run ends: finished, paused or failed. The queue listens to this.</summary>
     public event Action<DownloadItemViewModel>? Ended;
+
+    /// <summary>Raised on the UI thread when a download switches to a link the browser found, just before it starts again.</summary>
+    public event Action<DownloadItemViewModel>? SourceReplaced;
+
+    /// <summary>
+    /// Raised on the UI thread when a download leaves its browser step: downloading the link it found, or not (closed,
+    /// paused, failed). Either way its slot may now be free; the queue and batches listen.
+    /// </summary>
+    public event Action<DownloadItemViewModel>? BrowserDone;
 
     /// <summary>
     /// Loads the saved list. Anything still marked Downloading was running when the app last closed (or crashed),
@@ -96,11 +124,15 @@ public sealed class DownloadManager
         item.Run = item.IsVideo ? RunVideoAsync(item) : RunAsync(item);
     }
 
-    /// <summary>Stops a download. A restart that was on its way (new speed limit) is called off: pausing wins.</summary>
+    /// <summary>
+    /// Stops a download. A restart that was on its way (new speed limit) is called off: pausing wins. One waiting for the
+    /// browser, or in it, stops too (the browser closes) and becomes Paused.
+    /// </summary>
     public void Pause(DownloadItemViewModel item)
     {
         item.RestartRequested = false;
         item.Cts?.Cancel();
+        item.BrowserCts?.Cancel();
     }
 
     /// <summary>Puts a stopped download back in the queue so it starts again when the queue does.</summary>
@@ -132,6 +164,130 @@ public sealed class DownloadManager
         store.Save(info);
         item.AddLog(message);
         item.Refresh();
+    }
+
+    /// <summary>
+    /// Opens the download's link in a visible browser for the user to click through. When the page starts the file, the
+    /// download switches to that direct link with the browser's session and starts again. One browser at a time; the rest
+    /// wait their turn. Called from the row's menu (<paramref name="userAsked"/>), and on its own when a host answers with
+    /// a web page or refuses a link that must give a file. Closing the browser without a download skips the other parts
+    /// of that batch already waiting for it. While waiting and in the browser the download holds its "downloads at once"
+    /// slot, and Pause stops it.
+    /// </summary>
+    public Task OpenInBrowserAsync(DownloadItemViewModel item, bool userAsked = false) =>
+        EnterBrowser(item) ? RunBrowserAsync(item, userAsked) : Task.CompletedTask;
+
+    /// <summary>Puts the download in the wait for the browser. False when it can't go (a video, running, already there).</summary>
+    private bool EnterBrowser(DownloadItemViewModel item)
+    {
+        if (item.IsVideo || item.IsRunning || item.InBrowser) return false;
+        item.BrowserTicket = ++_browserTickets;
+        item.BrowserCts = new CancellationTokenSource();
+        item.SetBrowser(BrowserStage.Waiting);
+        return true;
+    }
+
+    private async Task RunBrowserAsync(DownloadItemViewModel item, bool userAsked)
+    {
+        var ct = item.BrowserCts!.Token;
+        CapturedSession? captured = null;
+        try
+        {
+            await _browserGate.WaitAsync(ct);
+            try
+            {
+                if (!Items.Contains(item)) return; // removed while waiting
+                if (!userAsked && item.Info.BatchId is { } waitingBatch
+                    && _browserSkip.TryGetValue(waitingBatch, out var skipBelow) && item.BrowserTicket < skipBelow)
+                {
+                    item.AddLog("Not opened in the browser: it was closed without a download for another part of this batch. " +
+                                "Right-click and choose Open in browser, or Retry failed parts, to try again.");
+                    return;
+                }
+                if (browser.NeedsSetup)
+                    item.AddLog($"Setting up the browser helper ({PlaywrightTools.SetupSizeText}, first time only).");
+                item.SetBrowser(BrowserStage.Open);
+                item.AddLog("Opening the link in a browser. TurboDL clicks through the page; solve any CAPTCHA or sign-in yourself.");
+                var session = await browser.CaptureAsync(item.Info.Url, status: new Progress<string>(item.AddLog), ct: ct);
+                if (session is null)
+                {
+                    item.AddLog("The browser was closed before a download started.");
+                    if (item.Info.BatchId is { } closedBatch)
+                    {
+                        _browserSkip[closedBatch] = _browserTickets + 1; // every part waiting right now
+                        var skipped = Items.Count(i => i != item && i.InBrowser && i.Info.BatchId == closedBatch);
+                        if (skipped > 0)
+                            item.AddLog($"The other {skipped} parts of this batch waiting for the browser are skipped. " +
+                                        "Use Retry failed parts to go through them again.");
+                    }
+                    return;
+                }
+                if (!Items.Contains(item)) return;
+                item.AddLog($"Browser handed over {session.Url}");
+                captured = session;
+            }
+            finally
+            {
+                _browserGate.Release();
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Paused (or TurboDL is closing): Resume runs it again, and a host page brings the browser back.
+            if (Items.Contains(item))
+            {
+                item.Info.Status = DownloadStatus.Paused;
+                store.Save(item.Info);
+                item.AddLog("Paused. Resume to open the browser again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Browser for download {Id} failed", item.Info.Id);
+            item.AddLog("Browser: " + ex.Message);
+        }
+        finally
+        {
+            item.BrowserCts?.Dispose();
+            item.BrowserCts = null;
+            item.SetBrowser(BrowserStage.None);
+        }
+
+        // Out of the browser step and straight into downloading, so the download keeps the slot the browser step held.
+        if (captured is not null && Items.Contains(item)) UseCapturedSource(item, captured.Url, captured.Headers());
+        BrowserDone?.Invoke(item);
+    }
+
+    /// <summary>
+    /// Points a stopped download at the direct link a browser found, with that browser's session headers, and starts it
+    /// from scratch, in the slot its browser step held. A file already saved (a host's web page) is deleted. A batch
+    /// part keeps the name it was added with; otherwise the server names the file.
+    /// </summary>
+    private void UseCapturedSource(DownloadItemViewModel item, string url, IReadOnlyDictionary<string, string> headers)
+    {
+        if (item.IsBusy) return;
+        var info = item.Info;
+        TryDelete(info.TempPath, recycle: false);
+        if (info.Status == DownloadStatus.Completed && !string.IsNullOrEmpty(info.FileName))
+            TryDelete(info.FilePath, recycle: false);
+
+        info.Url = url;
+        info.FinalUrl = null;
+        info.FileName = info.RequestedFileName ?? "";
+        info.Segments = [];
+        info.TotalSize = null;
+        info.ETag = null;
+        info.LastModified = null;
+        info.CompletedUtc = null;
+        info.Error = null;
+        info.ErrorIsTransient = false;
+        info.Status = DownloadStatus.Queued;
+        foreach (var (name, value) in headers)
+            if (!string.IsNullOrWhiteSpace(value)) info.Headers[name] = value;
+        store.Save(info);
+        item.Refresh();
+        SourceReplaced?.Invoke(item);
+        Start(item);
     }
 
     /// <summary>Sends files to the Recycle Bin (missing ones are skipped). For a batch's parts after extracting.</summary>
@@ -181,6 +337,14 @@ public sealed class DownloadManager
     /// </summary>
     public void Shutdown()
     {
+        // The browser step stops with TurboDL (the browser closes); those downloads come back Paused.
+        foreach (var item in Items.Where(i => i.InBrowser).ToList())
+        {
+            item.BrowserCts?.Cancel();
+            item.Info.Status = DownloadStatus.Paused;
+            store.Save(item.Info);
+        }
+
         var running = Items.Where(i => i.IsRunning).ToList();
         foreach (var item in running) Pause(item);
 
@@ -199,7 +363,7 @@ public sealed class DownloadManager
     private async Task RunAsync(DownloadItemViewModel item)
     {
         var info = item.Info;
-        var task = new DownloadTask(info, http, globalLimiter: globalLimiter);
+        var task = new DownloadTask(info, http, globalLimiter: globalLimiter, hostThrottle: hostThrottle);
         task.Checkpoint += store.Save; // background thread; Save is thread-safe
         task.Log += message =>
         {
@@ -233,6 +397,18 @@ public sealed class DownloadManager
         }
 
         if (error is not null) item.AddLog(error.GetBaseException().Message);
+
+        // A link that gave a host's web page instead of the file, added without the Add dialog's check (or before it
+        // existed): the page isn't kept as the "file", and the browser is opened for it. Batch parts get this from BatchService.
+        var savedHostPage = info.Status == DownloadStatus.Completed && info.BatchId is null && IsSavedHostPage(info);
+        if (savedHostPage) MarkFailed(item, DownloadTask.HostPageMessage);
+
+        // The host wants clicks (countdown, button) or a sign-in, or only lets browsers in: let the user do it in one.
+        // Into the browser step before anyone hears the run ended, so the queue doesn't hand its slot to the next link.
+        var toBrowser = (error is HostReturnedPageException || savedHostPage
+                         || (info.ExpectFile && error?.GetBaseException() is ServerRefusedException { MayNeedBrowser: true }))
+                        && EnterBrowser(item);
+
         Ended?.Invoke(item);
         if (info.Status == DownloadStatus.Completed)
             Completed?.Invoke(item);
@@ -247,7 +423,17 @@ public sealed class DownloadManager
             store.Save(info);
             Start(item);
         }
+        if (toBrowser) _ = RunBrowserAsync(item, userAsked: false);
     }
+
+    /// <summary>Names that are meant to be markup: a download saved under one of these is the page the user wanted.</summary>
+    private static readonly string[] PageExtensions = [".htm", ".html", ".xhtml", ".shtml", ".mht", ".mhtml", ".xml", ".svg"];
+
+    /// <summary>The finished file is an HTML page although its name doesn't say so: a host's waiting page, not the file.</summary>
+    private static bool IsSavedHostPage(DownloadInfo info) =>
+        info.Kind == DownloadKind.Http
+        && !PageExtensions.Any(ext => info.FileName.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+        && FileSniffer.SniffFile(info.FilePath) == FileKind.Html;
 
     private async Task RunVideoAsync(DownloadItemViewModel item)
     {

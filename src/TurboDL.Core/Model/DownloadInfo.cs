@@ -70,7 +70,8 @@ public sealed class DownloadInfo
     public bool ExpectFile { get; set; }
 
     /// <summary>
-    /// The name taken from the link when a batch was made ("" when the server picks it), or null outside batches.
+    /// The name taken from the link when a batch was made, or typed for a file host's page ("" when the server picks it);
+    /// null otherwise. It's the name kept when the download restarts on the link a browser found.
     /// <see cref="FileName"/> can't serve, because the engine replaces it with a unique name when the first one is taken.
     /// </summary>
     public string? RequestedFileName { get; set; }

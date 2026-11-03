@@ -60,7 +60,7 @@
 
             <Expander Header="Sign-in for file hosts (optional)" Margin="0,16,0,0">
                 <StackPanel Margin="0,8,0,0">
-                    <TextBlock Text="If the host needs you signed in, open one of the links in your browser, press F12, go to Network, select the request and copy its Cookie header here. Links that show a CAPTCHA have to be opened in the browser; TurboDL can't solve them."
+                    <TextBlock Text="If the host needs you signed in, open one of the links in your browser, press F12, go to Network, select the request and copy its Cookie header here. If a link shows a page instead of the file (a countdown, a button, a CAPTCHA), TurboDL opens it in a browser for you to click through, then downloads the file itself."
                                Style="{StaticResource CaptionText}" TextWrapping="Wrap" TextTrimming="None" Margin="0,0,0,12" />
                     <TextBlock Text="Cookie" Style="{StaticResource FieldLabel}" />
                     <ui:TextBox Text="{Binding Cookie, UpdateSourceTrigger=PropertyChanged}"

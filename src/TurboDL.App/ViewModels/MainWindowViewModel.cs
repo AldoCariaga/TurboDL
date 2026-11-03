@@ -191,7 +191,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private void PauseAll()
     {
         Queue.Stop();
-        foreach (var item in _manager.Items.Where(i => i.IsRunning).ToList()) _manager.Pause(item);
+        // Running, and in the browser step too (the browser closes): everything stops.
+        foreach (var item in _manager.Items.Where(i => i.IsBusy).ToList()) _manager.Pause(item);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -262,6 +263,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
         try { Clipboard.SetText(item.Info.Url); }
         catch (System.Runtime.InteropServices.COMException) { /* clipboard busy; nothing useful to do */ }
     }
+
+    /// <summary>
+    /// Opens the download's link in a visible browser so the user can click through a host page. When the page starts the
+    /// file, the download switches to that direct link with the browser's cookies and starts again.
+    /// </summary>
+    [RelayCommand]
+    private Task OpenInBrowserAsync(DownloadItemViewModel? item) =>
+        item is null ? Task.CompletedTask : _manager.OpenInBrowserAsync(item, userAsked: true);
 
     private void Tick()
     {

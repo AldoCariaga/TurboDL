@@ -52,6 +52,8 @@ public sealed class BatchService
         this.rules = rules;
         this.log = log;
         manager.Ended += OnEnded;
+        manager.SourceReplaced += OnSourceReplaced;
+        manager.BrowserDone += OnBrowserDone;
         manager.Items.CollectionChanged += OnItemsChanged;
     }
 
@@ -123,7 +125,7 @@ public sealed class BatchService
     /// <summary>Starts the batch's failed parts again, with a fresh set of automatic retries.</summary>
     public void RetryFailed(BatchViewModel batch)
     {
-        var failed = ItemsOf(batch).Where(i => i.Status == DownloadStatus.Failed && !i.IsRunning).ToList();
+        var failed = ItemsOf(batch).Where(i => i.Status == DownloadStatus.Failed && !i.IsBusy).ToList();
         foreach (var item in failed) batch.Info.Retries.Remove(item.Info.Id);
         if (batch.Info.Status == BatchStatus.NeedsAttention)
         {
@@ -183,12 +185,43 @@ public sealed class BatchService
         {
             var kind = FileSniffer.SniffFile(info.FilePath);
             if (kind == FileKind.Html && !LooksLikePage(info.FileName))
+            {
                 manager.MarkFailed(item, DownloadTask.HostPageMessage);
+                _ = manager.OpenInBrowserAsync(item);
+            }
             else if (!FileSniffer.MatchesName(info.FileName, kind))
                 manager.MarkFailed(item, $"{info.FileName} isn't a valid {ArchiveExtension(info.FileName)} file. " +
                                          "The host may have sent something else; check the link in your browser.");
         }
         Evaluate(batch);
+    }
+
+    /// <summary>
+    /// A part the browser found a direct link for runs again with a fresh set of automatic retries, so a batch that was
+    /// waiting on it goes back to downloading (and extracts when it's done), as after Retry failed parts. The manager
+    /// then starts it in the slot its browser step held.
+    /// </summary>
+    private void OnSourceReplaced(DownloadItemViewModel item)
+    {
+        if (Find(item.Info.BatchId) is not { } batch) return;
+        CancelRetry(item.Info.Id);
+        batch.Info.Retries.Remove(item.Info.Id);
+        if (batch.Info.Status == BatchStatus.NeedsAttention)
+        {
+            batch.Info.Status = BatchStatus.Downloading;
+            batch.Info.Message = null;
+        }
+        Save(batch);
+        batch.Refresh(ItemsOf(batch));
+    }
+
+    /// <summary>
+    /// A part out of its browser step without a link (closed, paused): the batch is looked at again, since it may now
+    /// be all failed.
+    /// </summary>
+    private void OnBrowserDone(DownloadItemViewModel item)
+    {
+        if (Find(item.Info.BatchId) is { } batch) Evaluate(batch);
     }
 
     private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -221,7 +254,7 @@ public sealed class BatchService
         {
             foreach (var item in items) item.Refresh();
             var states = items.Select(i => new BatchItemState(i.Info.Id, i.Info.RequestedFileName ?? "", i.Info.FileName,
-                i.Status, i.IsRunning, i.Info.ErrorIsTransient, i.Info.Error)).ToList();
+                i.Status, i.IsBusy, i.Info.ErrorIsTransient, i.Info.Error)).ToList(); // in the browser = not done yet
 
             IReadOnlyList<BatchStep> steps;
             var autoExtract = info.AutoExtract;
@@ -269,7 +302,7 @@ public sealed class BatchService
         {
             timer.Stop();
             _retryTimers.Remove(id);
-            if (item.Status != DownloadStatus.Failed || item.IsRunning || !manager.Items.Contains(item)) return;
+            if (item.Status != DownloadStatus.Failed || item.IsBusy || !manager.Items.Contains(item)) return;
             manager.Requeue(item);
             if (queue.IsRunning) queue.Pump();
             else manager.Start(item);

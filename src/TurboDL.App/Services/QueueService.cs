@@ -27,6 +27,7 @@ public sealed partial class QueueService : ObservableObject
         _manager = manager;
         _settings = settings;
         manager.Ended += OnEnded;
+        manager.BrowserDone += OnEnded; // a download out of its browser step: its slot may be free
         manager.Items.CollectionChanged += OnItemsChanged;
         settings.Changed += _ => Pump();
 
@@ -61,7 +62,7 @@ public sealed partial class QueueService : ObservableObject
         if (!IsRunning) return;
         IsRunning = false;
         Remember(false);
-        foreach (var item in _manager.Items.Where(i => i.IsRunning && _startedByQueue.Contains(i.Info.Id)).ToList())
+        foreach (var item in _manager.Items.Where(i => i.IsBusy && _startedByQueue.Contains(i.Info.Id)).ToList())
         {
             _stopping.Add(item.Info.Id);
             _manager.Pause(item);
@@ -101,14 +102,20 @@ public sealed partial class QueueService : ObservableObject
         }
     }
 
+    /// <summary>A download in its browser step counts as running: it holds a "downloads at once" slot.</summary>
     private List<QueueEntry> Entries() =>
-        _manager.Items.Select(i => new QueueEntry(i.Info.Id, i.Status, i.IsRunning)).ToList();
+        _manager.Items.Select(i => new QueueEntry(i.Info.Id, i.Status, i.IsBusy)).ToList();
 
     private void OnEnded(DownloadItemViewModel item)
     {
         var id = item.Info.Id;
+        if (item.IsBusy)
+        {
+            Pump(); // gone on to the browser step: still the queue's, still in its slot
+            return;
+        }
         if (_stopping.Remove(id) && item.Status == DownloadStatus.Paused) _manager.Requeue(item);
-        if (!item.IsRunning && item.Status != DownloadStatus.Queued) _startedByQueue.Remove(id);
+        if (item.Status != DownloadStatus.Queued) _startedByQueue.Remove(id);
         Pump();
     }
 

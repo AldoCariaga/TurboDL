@@ -223,8 +223,9 @@ public sealed class DownloadTask
 
     /// <summary>The error shown when <see cref="DownloadInfo.ExpectFile"/> is set and the host sends a web page.</summary>
     public const string HostPageMessage =
-        "The host sent a web page instead of the file. The link may have expired, or the site wants you to sign in " +
-        "or solve a CAPTCHA. Open the link in your browser, then add it again with your session cookie.";
+        "The host sent a web page instead of the file. The link may have expired, or the site wants you to sign in, " +
+        "wait for a countdown, click a download button or solve a CAPTCHA. Right-click the download and choose " +
+        "Open in browser to do that; TurboDL takes over once the file starts.";
 
     /// <summary>True when the requested name (or, if none was given, the server's name) is itself a web page.</summary>
     private static bool LooksLikePageName(string requested, string probed)

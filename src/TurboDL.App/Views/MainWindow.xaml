@@ -243,6 +243,8 @@
                                              CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                                 <ui:MenuItem Header="Copy link" Command="{Binding CopyLinkCommand}" Icon="{ui:SymbolIcon Link24}"
                                              CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                <ui:MenuItem Header="Open in browser" Command="{Binding OpenInBrowserCommand}" Icon="{ui:SymbolIcon Globe24}"
+                                             CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                                 <Separator />
                                 <ui:MenuItem Header="Resume" Command="{Binding ResumeCommand}" Icon="{ui:SymbolIcon Play24}" />
                                 <ui:MenuItem Header="Pause" Command="{Binding PauseCommand}" Icon="{ui:SymbolIcon Pause24}" />
