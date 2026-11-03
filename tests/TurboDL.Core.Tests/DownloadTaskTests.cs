@@ -404,6 +404,28 @@ public sealed class DownloadTaskTests : IDisposable
         Assert.False(info.ErrorIsTransient);
     }
 
+    [Theory]
+    [InlineData("bad\nfolder")]
+    [InlineData("bad\r\nfolder")]
+    [InlineData("bad|folder")]
+    [InlineData("bad<folder")]
+    public async Task InvalidFolderName_FailsAtOnce_NotTransient(string folder)
+    {
+        await using var server = await TestFileServer.StartAsync(TestFileServer.RandomBytes(50_000));
+        var info = NewInfo(server.Url);
+        info.Directory = Path.Combine(_dir, folder);
+        var log = new List<string>();
+        var task = new DownloadTask(info, Http, FastOptions with { MaxRetries = 3 });
+        task.Log += log.Add;
+
+        await Assert.ThrowsAsync<DownloadFailedException>(() => task.RunAsync(CancellationToken.None));
+
+        Assert.Equal(DownloadStatus.Failed, info.Status);
+        Assert.False(info.ErrorIsTransient);
+        Assert.Single(server.RequestHeaders); // the probe only
+        Assert.Empty(log); // no retries
+    }
+
     [Fact]
     public void OldJson_WithoutNewFields_LoadsWithDefaults()
     {

@@ -558,7 +558,18 @@ public sealed class DownloadTask
     }
 
     private static bool IsTransient(Exception ex) =>
-        ex is HttpRequestException or IOException or TimeoutException or TransientHttpException;
+        ex is HttpRequestException or TimeoutException or TransientHttpException
+        || (ex is IOException && !IsBadPath(ex));
+
+    private const int ErrorInvalidName = unchecked((int)0x8007007B);
+    private const int ErrorBadPathname = unchecked((int)0x800700A1);
+
+    /// <summary>
+    /// True when the folder or file name itself can't be used (a bad character, a malformed or too long path). Trying
+    /// again won't change that, unlike a full disk, a file in use or a dropped network share.
+    /// </summary>
+    private static bool IsBadPath(Exception ex) =>
+        ex is PathTooLongException || ex.HResult is ErrorInvalidName or ErrorBadPathname;
 
     /// <summary>Whether a failure that ended the download is worth trying again later.</summary>
     private static bool IsTransientFailure(Exception ex) => ex switch

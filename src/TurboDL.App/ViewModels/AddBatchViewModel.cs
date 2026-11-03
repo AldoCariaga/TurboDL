@@ -13,7 +13,7 @@ namespace TurboDL.App.ViewModels;
 /// <summary>
 /// The Add batch dialog: many links pasted at once (any text around them is fine), saved together into one folder and
 /// extracted when every part is in. Blocks what would break an archive set: a folder that already holds some of the
-/// files, or two links that would save under the same name.
+/// files, or two links that would save under the same name. Also blocks a folder name Windows can't use.
 /// </summary>
 public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryRules rules, SettingsService settings)
     : ObservableObject
@@ -143,6 +143,10 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
         if (_names.GroupBy(n => n, StringComparer.OrdinalIgnoreCase).FirstOrDefault(g => g.Count() > 1) is { } twice)
             return ($"Two links would save as {twice.Key}. Remove one of them.", NoteKind.Error);
 
+        if (HasBadCharacters(Folder.Trim()))
+            return ("The folder name has a character Windows doesn't allow (a line break, or one of < > : \" | ? *). " +
+                    "Choose another folder.", NoteKind.Error);
+
         if (FolderHoldsAny())
             return ("Some of these files are already in this folder. TurboDL would rename the new copies, and the archive " +
                     "couldn't be extracted. Choose an empty folder.", NoteKind.Error);
@@ -174,6 +178,30 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
             var path = Path.Combine(folder, n);
             return File.Exists(path) || File.Exists(path + ".turbodl");
         });
+    }
+
+    /// <summary>
+    /// True when the folder can't be created as typed: a control character such as a line break, a character not
+    /// allowed in a folder name, or a path Windows refuses. An empty or relative folder isn't reported here.
+    /// </summary>
+    private static bool HasBadCharacters(string folder)
+    {
+        if (folder.Length == 0) return false;
+        if (folder.Any(char.IsControl) || folder.IndexOfAny(Path.GetInvalidPathChars()) >= 0) return true;
+
+        var root = Path.GetPathRoot(folder) ?? "";
+        var names = folder[root.Length..].Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+        if (names.Any(n => n.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)) return true;
+
+        try
+        {
+            Path.GetFullPath(folder);
+            return false;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return true;
+        }
     }
 
     private void SetQuietly(Action set)
