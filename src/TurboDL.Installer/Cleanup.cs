@@ -92,7 +92,7 @@ public static class Cleanup
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { return false; }
     }
 
-    /// <summary>The yt-dlp/ffmpeg/Deno folder TurboDL downloads on first use (re-downloadable, not the user's data).</summary>
+    /// <summary>The yt-dlp/ffmpeg/Deno/7-Zip folder TurboDL downloads on first use (re-downloadable, not the user's data).</summary>
     public static string ToolsDir(InstallLocations locations) => Path.Combine(locations.UserDataDir, "tools");
 
     /// <summary>Deletes the downloaded tools, and with <paramref name="userData"/> the whole data folder (list, settings, logs).</summary>
