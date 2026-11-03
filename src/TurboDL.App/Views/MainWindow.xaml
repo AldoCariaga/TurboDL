@@ -40,15 +40,29 @@
                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
         </ContextMenu>
 
+        <!-- Screen readers read the entry's name (a batch's also with its status), not the view model's type name. -->
         <Style x:Key="SidebarEntry" TargetType="ListBoxItem" BasedOn="{StaticResource SidebarItem}">
+            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding Group}" Value="Batches">
                     <!-- Two lines: the name and the batch's status. -->
                     <Setter Property="Height" Value="50" />
+                    <Setter Property="AutomationProperties.Name">
+                        <Setter.Value>
+                            <MultiBinding StringFormat="{}{0}, {1}">
+                                <Binding Path="Name" />
+                                <Binding Path="Subtitle" />
+                            </MultiBinding>
+                        </Setter.Value>
+                    </Setter>
                     <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListBox}}" />
                     <Setter Property="ContextMenu" Value="{StaticResource BatchMenu}" />
                 </DataTrigger>
             </Style.Triggers>
+        </Style>
+
+        <Style x:Key="DownloadEntry" TargetType="ListViewItem" BasedOn="{StaticResource DownloadRow}">
+            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
         </Style>
     </ui:FluentWindow.Resources>
 
@@ -209,7 +223,7 @@
                     <!-- Downloads -->
                     <ListView x:Name="List" Grid.Row="2" Style="{StaticResource BareList}" Padding="16,4,16,8"
                               ItemsSource="{Binding View}" SelectionMode="Extended"
-                              ItemContainerStyle="{StaticResource DownloadRow}"
+                              ItemContainerStyle="{StaticResource DownloadEntry}"
                               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                               VirtualizingPanel.ScrollUnit="Pixel"
                               SelectionChanged="OnSelectionChanged" MouseDoubleClick="OnRowDoubleClick"
