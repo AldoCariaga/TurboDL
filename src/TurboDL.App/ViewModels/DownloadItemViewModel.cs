@@ -79,6 +79,12 @@ public sealed partial class DownloadItemViewModel : ObservableObject
     /// <summary>"Solving": its file host's page is being clicked through, or is waiting its turn in the browser.</summary>
     public bool IsSolving => InBrowser && !IsRunning;
 
+    /// <summary>The link the download was added with: the host's page when a browser handed over a direct link, else its link.</summary>
+    public string OriginalLink => Info.PageUrl ?? Info.Url;
+
+    /// <summary>True when a browser handed over a direct link, so the original link and the download link differ.</summary>
+    public bool HasDirectLink => Info.PageUrl is not null;
+
     /// <summary>
     /// Running, or in its browser step: either way it holds one of the "downloads at once" slots, and Pause stops it.
     /// The browser step is part of getting the file, so a host page doesn't free the slot for the next link.
@@ -225,6 +231,8 @@ public sealed partial class DownloadItemViewModel : ObservableObject
         OnPropertyChanged(nameof(IsRunning));
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(IsSolving));
+        OnPropertyChanged(nameof(OriginalLink));
+        OnPropertyChanged(nameof(HasDirectLink));
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanPause));
         OnPropertyChanged(nameof(VideoDescription));

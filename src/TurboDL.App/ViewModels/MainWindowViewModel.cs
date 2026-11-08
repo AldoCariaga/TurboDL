@@ -266,12 +266,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
             Process.Start(new ProcessStartInfo(item.Info.Directory) { UseShellExecute = true });
     }
 
+    /// <summary>Copies the link the download was added with (the host's page, not the direct link a browser found).</summary>
     [RelayCommand]
     private void CopyLink(DownloadItemViewModel? item)
     {
-        if (item is null) return;
-        _clipboard.Ignore(item.Info.Url);
-        try { Clipboard.SetText(item.Info.Url); }
+        if (item is not null) CopyText(item.OriginalLink);
+    }
+
+    /// <summary>Copies the direct link TurboDL downloads from (the one a browser handed over, when there is one).</summary>
+    [RelayCommand]
+    private void CopyDownloadLink(DownloadItemViewModel? item)
+    {
+        if (item is not null) CopyText(item.Info.Url);
+    }
+
+    private void CopyText(string text)
+    {
+        _clipboard.Ignore(text);
+        try { Clipboard.SetText(text); }
         catch (System.Runtime.InteropServices.COMException) { /* clipboard busy; nothing useful to do */ }
     }
 
