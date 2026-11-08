@@ -16,7 +16,8 @@
     // A trip to an ad cuts it short.
     { "action": "wait", "seconds": 20 }
   ],
-  "capture": { "urlPattern": null, "requireAttachment": true },
+  // Every real part so far came from edge01.fetchio.cc; a download from anywhere else (an ad) is ignored.
+  "capture": { "urlPattern": null, "requireAttachment": true, "fileHosts": ["fetchio.cc"] },
   "popups": "closeAds",
   "offSiteRedirects": "goBack",
   "whenStepsEnd": "generic"

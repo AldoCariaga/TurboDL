@@ -110,6 +110,12 @@ public sealed record SiteConfig
     /// <summary>A response whose URL matches counts as the file (with or without an attachment header). Null: none.</summary>
     public Regex? CaptureUrl { get; init; }
 
+    /// <summary>
+    /// Where the file may come from besides <see cref="Hosts"/> (each with its subdomains). Empty: anywhere. A download
+    /// from any other host (an ad's) is cancelled and ignored.
+    /// </summary>
+    public IReadOnlyList<string> FileHosts { get; init; } = [];
+
     /// <summary>False: any successful non-page response counts as the file, not only one marked as an attachment.</summary>
     public bool RequireAttachment { get; init; } = true;
 
@@ -132,11 +138,21 @@ public sealed record SiteConfig
     /// How closely <paramref name="host"/> matches: the length of the longest config host it is or is a subdomain of, or
     /// -1. Label by label, never by substring: "evilhost.com" doesn't match "host.com".
     /// </summary>
-    public int MatchLength(string host)
+    public int MatchLength(string host) => MatchLength(host, Hosts);
+
+    /// <summary>True when the file may come from <paramref name="url"/>'s host: any host when <see cref="FileHosts"/> is empty.</summary>
+    public bool IsFileHost(string url)
+    {
+        if (FileHosts.Count == 0) return true;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+        return MatchLength(uri.IdnHost, FileHosts) >= 0 || MatchLength(uri.IdnHost) >= 0;
+    }
+
+    private static int MatchLength(string host, IEnumerable<string> hosts)
     {
         host = host.TrimEnd('.').ToLowerInvariant();
         var best = -1;
-        foreach (var h in Hosts)
+        foreach (var h in hosts)
         {
             if (host == h || (host.Length > h.Length && host.EndsWith(h, StringComparison.Ordinal) && host[^(h.Length + 1)] == '.'))
                 best = Math.Max(best, h.Length);

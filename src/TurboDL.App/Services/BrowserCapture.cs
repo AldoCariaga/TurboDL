@@ -72,14 +72,29 @@ public sealed class BrowserCapture(PlaywrightTools tools)
 
         void Watch(IPage page)
         {
-            page.Download += (_, download) => done.TrySetResult(new Hit(download.Url, download.Page, download, null));
+            page.Download += (_, download) =>
+            {
+                if (site is not null && !site.IsFileHost(download.Url))
+                {
+                    // An ad that starts a download of its own: not the file. The browser mustn't keep it either.
+                    report.Say($"Ignored a download from {HostOf(download.Url)}: it isn't one of {site.Name}'s file hosts.");
+                    _ = download.CancelAsync().ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                    return;
+                }
+                done.TrySetResult(new Hit(download.Url, download.Page, download, null));
+            };
             page.Close += (_, _) => { if (context.Pages.Count == 0) done.TrySetResult(null); };
         }
 
-        // Some hosts send the file to a form post or a script, not a link: any attachment counts, whichever tab asked.
+        // Some hosts send the file to a form post or a script, not a link: an attachment counts, whichever tab asked.
         context.Response += (_, response) =>
         {
             if (!IsFile(response, site)) return;
+            if (site is not null && !site.IsFileHost(response.Url))
+            {
+                report.Say($"Ignored a file from {HostOf(response.Url)}: it isn't one of {site.Name}'s file hosts.");
+                return;
+            }
             IPage? page = null;
             try { page = response.Frame.Page; } catch (PlaywrightException) { /* from a worker; no page */ }
             response.Request.Headers.TryGetValue("referer", out var referer);
@@ -138,6 +153,9 @@ public sealed class BrowserCapture(PlaywrightTools tools)
     private static bool IsFile(IResponse response, SiteConfig? site)
     {
         if (response.Status is not (200 or 206)) return false;
+        // A page's own parts are never the file, whatever their headers say: Google's ad servers mark their scripts as
+        // attachments ("f.txt"), and one was taken for a batch part.
+        if (Subresources.Contains(response.Request.ResourceType)) return false;
         var headers = response.Headers; // lower-case names
         if (headers.TryGetValue("content-type", out var type)
             && (type.Contains("text/html", StringComparison.OrdinalIgnoreCase)
@@ -148,6 +166,14 @@ public sealed class BrowserCapture(PlaywrightTools tools)
         if (site.IsFileUrl(response.Url)) return true;
         return !site.RequireAttachment && response.Request.IsNavigationRequest;
     }
+
+    /// <summary>Request kinds that load a part of a page (Playwright's resource types), never a download.</summary>
+    private static readonly HashSet<string> Subresources = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "script", "stylesheet", "image", "font", "media", "texttrack", "manifest", "ping", "eventsource", "websocket",
+    };
+
+    private static string HostOf(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : url;
 
     /// <summary>
     /// A tab a page opened (not one the user opened) gets a few seconds to become the file or the host's own page;

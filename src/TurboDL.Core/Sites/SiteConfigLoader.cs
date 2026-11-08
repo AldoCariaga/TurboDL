@@ -19,7 +19,7 @@ namespace TurboDL.Core.Sites;
 ///     { "action": "click", "selector": "#go", "optional": false },
 ///     { "action": "wait", "seconds": 2 }
 ///   ],
-///   "capture": { "urlPattern": null, "requireAttachment": true },
+///   "capture": { "urlPattern": null, "requireAttachment": true, "fileHosts": ["cdn.example.net"] },
 ///   "popups": "closeAds", "offSiteRedirects": "goBack", "whenStepsEnd": "generic"
 /// }
 /// </code>
@@ -165,14 +165,8 @@ public static class SiteConfigLoader
         if (name.Length == 0) throw new InvalidConfigException("\"name\" is missing.");
 
         if (raw.Hosts is not { Count: > 0 }) throw new InvalidConfigException("\"hosts\" is missing or empty.");
-        var hosts = new List<string>();
-        foreach (var rawHost in raw.Hosts)
-        {
-            var host = rawHost?.Trim().TrimEnd('.').ToLowerInvariant() ?? "";
-            if (host.Length == 0 || host.Contains('*') || Uri.CheckHostName(host) != UriHostNameType.Dns)
-                throw new InvalidConfigException($"\"{rawHost}\" in \"hosts\" isn't a host name like \"example.com\" (its subdomains match by themselves).");
-            if (!hosts.Contains(host)) hosts.Add(host);
-        }
+        var hosts = HostNames(raw.Hosts, "hosts");
+        var fileHosts = raw.Capture?.FileHosts is { } listed ? HostNames(listed, "capture.fileHosts") : [];
 
         if (raw.Steps is not { Count: > 0 }) throw new InvalidConfigException("\"steps\" is missing or empty.");
         var steps = new List<SiteStep>();
@@ -200,6 +194,7 @@ public static class SiteConfigLoader
             BrowserFirst = raw.BrowserFirst ?? false,
             Steps = steps,
             CaptureUrl = captureUrl,
+            FileHosts = fileHosts,
             RequireAttachment = raw.Capture?.RequireAttachment ?? true,
             Popups = Choose(raw.Popups, "popups", PopupHandling.CloseAds, ("closeAds", PopupHandling.CloseAds), ("keep", PopupHandling.Keep)),
             OffSiteRedirects = Choose(raw.OffSiteRedirects, "offSiteRedirects", OffSiteHandling.Allow,
@@ -209,6 +204,20 @@ public static class SiteConfigLoader
             Source = source,
             Origin = origin,
         };
+    }
+
+    /// <summary>Lower-case host names, each checked; a wildcard is refused (subdomains match by themselves).</summary>
+    private static List<string> HostNames(IEnumerable<string?> raw, string field)
+    {
+        var hosts = new List<string>();
+        foreach (var rawHost in raw)
+        {
+            var host = rawHost?.Trim().TrimEnd('.').ToLowerInvariant() ?? "";
+            if (host.Length == 0 || host.Contains('*') || Uri.CheckHostName(host) != UriHostNameType.Dns)
+                throw new InvalidConfigException($"\"{rawHost}\" in \"{field}\" isn't a host name like \"example.com\" (its subdomains match by themselves).");
+            if (!hosts.Contains(host)) hosts.Add(host);
+        }
+        return hosts;
     }
 
     private static SiteStep BuildStep(StepJson? raw, int number)
@@ -294,6 +303,7 @@ public static class SiteConfigLoader
     private sealed class CaptureJson
     {
         public string? UrlPattern { get; set; }
+        public List<string?>? FileHosts { get; set; }
         public bool? RequireAttachment { get; set; }
     }
 }

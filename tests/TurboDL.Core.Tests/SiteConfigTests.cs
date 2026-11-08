@@ -131,6 +131,29 @@ public sealed class SiteConfigTests : IDisposable
     public void Parse_BadSteps_AreRefused(string steps, string expected) =>
         Assert.Contains(expected, Problem(Minimal(steps)));
 
+    [Theory]
+    [InlineData("https://cdn.files.example/x.rar", true)]
+    [InlineData("https://eu.cdn.files.example/x.rar", true)]
+    [InlineData("https://x.com/f/1", true)] // the config's own hosts
+    [InlineData("https://www.x.com/f/1", true)]
+    [InlineData("https://googleads.g.doubleclick.net/pagead/ads", false)]
+    [InlineData("https://evilcdn.files.example/x.rar", false)]
+    [InlineData("not a url", false)]
+    public void FileHosts_LimitWhereTheFileMayComeFrom(string url, bool expected)
+    {
+        var config = SiteConfigLoader.Parse(Minimal(extra: """, "capture": { "fileHosts": ["CDN.files.example"] } """), SiteSource.User, "x").Config!;
+
+        Assert.Equal(expected, config.IsFileHost(url));
+    }
+
+    [Fact]
+    public void FileHosts_LeftOut_AnyHost() =>
+        Assert.True(SiteConfigLoader.Parse(Minimal(), SiteSource.User, "x").Config!.IsFileHost("https://anything.example/f"));
+
+    [Fact]
+    public void FileHosts_Wildcard_IsRefused() =>
+        Assert.Contains("in \"capture.fileHosts\" isn't a host name", Problem(Minimal(extra: """, "capture": { "fileHosts": ["*.cdn.example"] } """)));
+
     [Fact]
     public void Parse_UnknownOffSiteValue_IsRefused() =>
         Assert.Contains("\"stay\" isn't one TurboDL knows", Problem(Minimal(extra: """, "offSiteRedirects": "stay" """)));
@@ -153,6 +176,8 @@ public sealed class SiteConfigTests : IDisposable
         Assert.Equal("FileKeeper", fileKeeper.Name);
         Assert.Equal(["filekeeper.net"], fileKeeper.Hosts);
         Assert.Equal(OffSiteHandling.GoBack, fileKeeper.OffSiteRedirects); // its download button can send the tab to ads
+        Assert.True(fileKeeper.IsFileHost("https://edge01.fetchio.cc/f/abc"));
+        Assert.False(fileKeeper.IsFileHost("https://googleads.g.doubleclick.net/pagead/ads")); // an ad script once taken for part01
         Assert.Empty(catalog.Problems);
     }
 
