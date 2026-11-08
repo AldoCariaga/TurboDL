@@ -125,6 +125,12 @@ public sealed class DownloadManager
     public void Start(DownloadItemViewModel item)
     {
         if (item.IsRunning || item.InBrowser || item.Info.Status == DownloadStatus.Completed) return;
+        // A handed-over link that failed for good (expired, refused, or not the file) isn't tried again: its page is.
+        if (item.Info is { Status: DownloadStatus.Failed, ErrorIsTransient: false, PageUrl: not null } && ReturnToPage(item.Info))
+        {
+            store.Save(item.Info);
+            item.AddLog("Starting again from the host's page, since the link the browser found didn't work.");
+        }
         // A host whose site config says its links only work in a browser: straight to the browser step, which holds the
         // download's slot the same way a host page found over HTTP does.
         if (!item.IsVideo && BrowserFirstSite(item.Info) is { } site && EnterBrowser(item))
@@ -171,6 +177,8 @@ public sealed class DownloadManager
     {
         var info = item.Info;
         if (File.Exists(info.FilePath)) TryDelete(info.FilePath, recycle: false);
+        // A link the browser handed over gave the wrong thing: the retry starts from the host's page again.
+        ReturnToPage(info);
         // FileName stays, so the retry saves under the same name.
         info.Segments = [];
         info.TotalSize = null;
@@ -254,8 +262,10 @@ public sealed class DownloadManager
                     ? "Opening the link in a browser. TurboDL clicks through the page; solve any CAPTCHA or sign-in yourself."
                     : "Solving the host's page in a hidden browser. It comes on screen if a CAPTCHA or sign-in needs you.");
                 // Shown from the start only when the user asked for the browser; otherwise hidden until it needs them.
-                var session = await browser.CaptureAsync(item.Info.Url, status: new Progress<string>(item.AddLog), ct: ct,
-                    visible: userAsked, site: SiteFor(item.Info.Url));
+                // The host's page, not a direct link an earlier browser found (that one has expired, or wasn't the file).
+                var pageUrl = item.Info.PageUrl ?? item.Info.Url;
+                var session = await browser.CaptureAsync(pageUrl, status: new Progress<string>(item.AddLog), ct: ct,
+                    visible: userAsked, site: SiteFor(pageUrl));
                 if (session is null)
                 {
                     failure = "The browser was closed before a download started.";
@@ -328,7 +338,11 @@ public sealed class DownloadManager
         if (info.Status == DownloadStatus.Completed && !string.IsNullOrEmpty(info.FileName))
             TryDelete(info.FilePath, recycle: false);
 
-        info.PageUrl ??= info.Url;
+        if (info.PageUrl is null)
+        {
+            info.PageUrl = info.Url;
+            info.PageHeaders = new(info.Headers);
+        }
         info.Url = url;
         info.FinalUrl = null;
         info.FileName = info.RequestedFileName ?? "";
@@ -346,6 +360,36 @@ public sealed class DownloadManager
         item.Refresh();
         SourceReplaced?.Invoke(item);
         Start(item);
+    }
+
+    /// <summary>
+    /// Points a download whose link a browser handed over back at the host's page it came from, with the headers it had
+    /// then, and forgets the progress on the old link. False when there's no page to go back to.
+    /// </summary>
+    private static bool ReturnToPage(DownloadInfo info)
+    {
+        if (info.PageUrl is null) return false;
+        info.Url = info.PageUrl;
+        if (info.PageHeaders is { } before)
+        {
+            info.Headers = new(before);
+        }
+        else
+        {
+            // Handed over before the old headers were kept: drop the browser session's.
+            foreach (var key in info.Headers.Keys.Where(k => k.Equals("Cookie", StringComparison.OrdinalIgnoreCase)
+                         || k.Equals("Referer", StringComparison.OrdinalIgnoreCase)
+                         || k.Equals("User-Agent", StringComparison.OrdinalIgnoreCase)).ToList())
+                info.Headers.Remove(key);
+        }
+        info.PageUrl = null;
+        info.PageHeaders = null;
+        info.FinalUrl = null;
+        info.Segments = [];
+        info.TotalSize = null;
+        info.ETag = null;
+        info.LastModified = null;
+        return true;
     }
 
     /// <summary>Sends files to the Recycle Bin (missing ones are skipped). For a batch's parts after extracting.</summary>

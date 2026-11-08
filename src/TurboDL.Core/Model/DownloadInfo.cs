@@ -83,6 +83,9 @@ public sealed class DownloadInfo
     /// </summary>
     public string? PageUrl { get; set; }
 
+    /// <summary>The request headers the download had before the browser's session replaced them; kept with <see cref="PageUrl"/>.</summary>
+    public Dictionary<string, string>? PageHeaders { get; set; }
+
     /// <summary>True when the last failure was a network or server hiccup worth retrying later (not a 404, a web page or a changed file).</summary>
     public bool ErrorIsTransient { get; set; }
 
