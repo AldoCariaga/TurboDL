@@ -64,9 +64,49 @@ public sealed class ArchiveExtractorTests : IDisposable
     public void BuildArguments_IsExactlyTheExpectedList(string firstVolume, string output)
     {
         Assert.Equal(
-            ["x", "-y", "-bso0", "-bsp0", "-pturbodl-no-password", "-o" + output, "--", firstVolume],
+            ["x", "-y", "-aou", "-bso0", "-bsp1", "-pturbodl-no-password", "-o" + output, "--", firstVolume],
             ArchiveExtractor.BuildArguments(firstVolume, output));
-        Assert.DoesNotContain("-bsp1", ArchiveExtractor.BuildArguments(firstVolume, output));
+    }
+
+    [Theory]
+    [InlineData("  0%", 0, null)]
+    [InlineData(" 45%", 45, null)]
+    [InlineData(" 45% 12", 45, null)]
+    [InlineData(" 45% 12 - Game\\data\\big file.bin", 45, "Game\\data\\big file.bin")]
+    [InlineData("100% 3 - setup.exe", 100, "setup.exe")]
+    public void TryParseProgress_ReadsSevenZipsProgress(string piece, int percent, string? file)
+    {
+        Assert.True(ArchiveExtractor.TryParseProgress(piece, out var progress));
+        Assert.Equal(new ExtractProgress(percent, file), progress);
+    }
+
+    [Theory]
+    [InlineData("                    ")]
+    [InlineData("Extracting archive: x.rar")]
+    [InlineData("101%")]
+    [InlineData("45 %")]
+    public void TryParseProgress_IgnoresEverythingElse(string piece)
+    {
+        Assert.False(ArchiveExtractor.TryParseProgress(piece, out _));
+    }
+
+    [Fact]
+    public async Task Extract_ReportsEachPercentageOnce_AsSevenZipRedrawsIt()
+    {
+        var reports = new List<ExtractProgress>();
+        var progress = new InlineProgress<ExtractProgress>(p => { lock (reports) reports.Add(p); });
+
+        var result = await ArchiveExtractor.ExtractAsync(_sevenZip, Archive("plain archive"), Out(), TimeSpan.FromSeconds(30),
+            CancellationToken.None, progress);
+
+        Assert.True(result.Ok);
+        Assert.Equal([0, 37, 82, 100], reports.Select(r => r.Percent));
+        Assert.Equal("hello.txt", reports[1].File);
+    }
+
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 
     [Fact]

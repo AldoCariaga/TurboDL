@@ -18,13 +18,18 @@ public static class ToolProcess
 
     private static readonly UTF8Encoding Utf8 = new(false);
 
+    /// <param name="splitStdOutOnProgress">
+    /// Also end a stdout "line" at a backspace or carriage return. Tools like 7-Zip redraw a progress line in place with
+    /// those and never end it, so with plain lines nothing would arrive until the tool finished.
+    /// </param>
     public static async Task<ToolRunResult> RunAsync(
         string executable,
         IReadOnlyList<string> arguments,
         Action<string>? onStdOut,
         Action<string>? onStdErr,
         TimeSpan? timeout,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool splitStdOutOnProgress = false)
     {
         var psi = new ProcessStartInfo(executable)
         {
@@ -53,7 +58,7 @@ public static class ToolProcess
         process.StandardInput.Close();
 
         var stderr = new Queue<string>();
-        var outPump = PumpAsync(process.StandardOutput, onStdOut);
+        var outPump = splitStdOutOnProgress ? PumpProgressAsync(process.StandardOutput, onStdOut) : PumpAsync(process.StandardOutput, onStdOut);
         var errPump = PumpAsync(process.StandardError, line =>
         {
             lock (stderr)
@@ -115,5 +120,30 @@ public static class ToolProcess
     {
         while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line)
             onLine?.Invoke(line);
+    }
+
+    /// <summary>Like <see cref="PumpAsync"/>, but a backspace or carriage return ends a piece too. Blank pieces are skipped.</summary>
+    private static async Task PumpProgressAsync(StreamReader reader, Action<string>? onPiece)
+    {
+        var buffer = new char[4096];
+        var piece = new StringBuilder();
+        void Flush()
+        {
+            if (piece.Length == 0) return;
+            var text = piece.ToString();
+            piece.Clear();
+            if (!string.IsNullOrWhiteSpace(text)) onPiece?.Invoke(text);
+        }
+
+        int read;
+        while ((read = await reader.ReadAsync(buffer).ConfigureAwait(false)) > 0)
+        {
+            for (var i = 0; i < read; i++)
+            {
+                if (buffer[i] is '\n' or '\r' or '\b') Flush();
+                else piece.Append(buffer[i]);
+            }
+        }
+        Flush();
     }
 }

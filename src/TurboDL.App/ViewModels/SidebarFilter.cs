@@ -22,4 +22,12 @@ public sealed partial class SidebarFilter(string name, SymbolRegular icon, Func<
 
     /// <summary>A second line under the name (a batch's status); null for none.</summary>
     [ObservableProperty] public partial string? Subtitle { get; set; }
+
+    /// <summary>A batch's extraction progress (0–1) for the thin bar under its status; null hides the bar.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasProgress), nameof(ProgressFraction))]
+    public partial double? Progress { get; set; }
+
+    public bool HasProgress => Progress is not null;
+    public double ProgressFraction => Progress ?? 0;
 }

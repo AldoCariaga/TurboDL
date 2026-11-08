@@ -6,6 +6,7 @@
 //   WARN      -> extracts as normal, "WARNING: Headers Error", exit 1
 //   SLOW      -> sleeps 60 s, exit 0
 //   otherwise -> needs -o<dir>; writes the named files (the installer mode the 7-Zip setup uses) or <dir>\hello.txt, exit 0
+// With -bsp1 it first prints progress (0%, 37%, 37%, 82%, 100%) to stdout the way 7-Zip does, with backspaces.
 using System.Text;
 
 Console.OutputEncoding = new UTF8Encoding(false);
@@ -56,6 +57,22 @@ if (string.IsNullOrEmpty(output))
     stderr.WriteLine("ERROR: missing -o");
     return 7;
 }
+
+// With -bsp1, progress goes to stdout the way 7-Zip writes it: one line redrawn in place with backspaces, never ended.
+var progress = switches.Contains("-bsp1");
+void Progress(string text)
+{
+    if (!progress) return;
+    Console.Out.Write(text + new string('\b', text.Length));
+    Console.Out.Flush();
+    Thread.Sleep(20);
+}
+Progress("  0%");
+Progress(" 37% 1 - hello.txt");
+Progress(" 37% 1 - hello.txt"); // a repeat: the extractor reports each percentage once
+Progress(" 82% 1 - hello.txt");
+Progress("                  "); // 7-Zip wipes the line with spaces
+Progress("100%");
 
 Directory.CreateDirectory(output);
 if (names.Length > 0)

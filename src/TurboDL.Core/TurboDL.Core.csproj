@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -8,6 +8,11 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Built-in site configs: resources, so the single-file app has them too (SiteConfigLoader reads them by this name). -->
+    <EmbeddedResource Include="Sites\BuiltIn\*.json" LogicalName="TurboDL.Core.Sites.BuiltIn.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

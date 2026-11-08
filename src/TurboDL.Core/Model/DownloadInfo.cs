@@ -76,6 +76,13 @@ public sealed class DownloadInfo
     /// </summary>
     public string? RequestedFileName { get; set; }
 
+    /// <summary>
+    /// The file host's page the download was added with, once <see cref="Url"/> is a link a browser handed over; null
+    /// until then. A site config that sends its links straight to the browser leaves such a download alone, so a handed-over
+    /// link on the host's own domain isn't sent back to the browser.
+    /// </summary>
+    public string? PageUrl { get; set; }
+
     /// <summary>True when the last failure was a network or server hiccup worth retrying later (not a 404, a web page or a changed file).</summary>
     public bool ErrorIsTransient { get; set; }
 

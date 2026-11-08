@@ -62,6 +62,7 @@ public partial class App : Application
         // --db=<path> runs on a throwaway list; its settings then live next to it.
         var db = builder.Configuration["db"];
         var settingsPath = db is null ? null : Path.ChangeExtension(db, ".settings.json");
+        var sitesFolder = db is null ? null : Path.ChangeExtension(db, ".sites");
         // --tools=<folder> uses another yt-dlp/ffmpeg/Deno folder (tests, or a portable setup).
         var toolsFolder = builder.Configuration["tools"];
 
@@ -83,6 +84,7 @@ public partial class App : Application
         services.AddSingleton<SevenZipService>();
         services.AddSingleton(sp => new PlaywrightTools(toolsFolder, sp.GetRequiredService<System.Net.Http.HttpClient>()));
         services.AddSingleton<BrowserCapture>();
+        services.AddSingleton(sp => new SiteConfigService(sitesFolder, sp.GetRequiredService<ILogger<SiteConfigService>>()));
         services.AddSingleton<DownloadManager>();
         services.AddSingleton<QueueService>();
         services.AddSingleton<BatchService>();

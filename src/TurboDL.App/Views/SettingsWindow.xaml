@@ -246,6 +246,60 @@
                     </DockPanel>
                 </Border>
 
+                <!-- Sites -->
+                <DockPanel Margin="0,24,0,8">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <ui:Button Content="Open sites folder" Command="{Binding OpenSitesFolderCommand}" Appearance="Transparent"
+                                   ToolTip="{Binding SitesFolder}" />
+                        <ui:Button Content="Reload" Command="{Binding ReloadSitesCommand}" Appearance="Transparent" Margin="4,0,0,0"
+                                   ToolTip="Read the site configs again" />
+                    </StackPanel>
+                    <TextBlock Text="Sites" Style="{StaticResource SectionHeading}" Margin="0" VerticalAlignment="Center" />
+                </DockPanel>
+                <Border Style="{StaticResource SettingRow}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SettingHelp}" Margin="0,0,0,12" TextWrapping="Wrap"
+                                   Text="When a host sends a web page instead of the file, a site config says how to get through that host's page. Hosts without one get the general autopilot. Add your own as .json files in the sites folder; one with a built-in config's id replaces it." />
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Name" Style="{StaticResource ColumnHeaderText}" />
+                            <TextBlock Grid.Column="1" Text="Hosts" Style="{StaticResource ColumnHeaderText}" Margin="8,0,0,0" />
+                            <TextBlock Grid.Column="2" Text="From" Style="{StaticResource ColumnHeaderText}" Margin="8,0,0,0" />
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding Sites}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:SiteRow">
+                                    <Grid Margin="0,4" ToolTip="{Binding Origin}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="160" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Name}" Style="{StaticResource BodyText}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Hosts}" Style="{StaticResource BodyText}"
+                                                   TextTrimming="CharacterEllipsis" Margin="8,0,0,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Source}" Style="{StaticResource BodyText}" Margin="8,0,0,0" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ItemsControl ItemsSource="{Binding SiteProblems}" Margin="0,8,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:SiteProblemRow">
+                                    <TextBlock Style="{StaticResource BodyText}" TextWrapping="Wrap" TextTrimming="None" Margin="0,4"
+                                               Foreground="{DynamicResource SystemFillColorCriticalBrush}" ToolTip="{Binding Path}">
+                                        <Run Text="{Binding File, Mode=OneWay}" FontWeight="SemiBold" /><Run Text=" wasn't loaded: " /><Run Text="{Binding Reason, Mode=OneWay}" />
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
                 <!-- General -->
                 <TextBlock Text="General" Style="{StaticResource SectionHeading}" />
                 <Border Style="{StaticResource SettingRow}">

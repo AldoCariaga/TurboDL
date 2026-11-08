@@ -29,6 +29,8 @@
         -->
         <ContextMenu x:Key="BatchMenu" x:Shared="False"
                      DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+            <ui:MenuItem Header="Details" Command="{Binding ShowBatchDetailsCommand}" Icon="{ui:SymbolIcon Info24}"
+                         CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             <ui:MenuItem Header="Retry failed parts" Command="{Binding RetryBatchCommand}" Icon="{ui:SymbolIcon ArrowClockwise24}"
                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             <ui:MenuItem Header="Extract now" Command="{Binding ExtractBatchCommand}" Icon="{ui:SymbolIcon FolderZip24}"
@@ -45,8 +47,8 @@
             <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding Group}" Value="Batches">
-                    <!-- Two lines: the name and the batch's status. -->
-                    <Setter Property="Height" Value="50" />
+                    <!-- Two lines: the name and the batch's status (and, while extracting, a thin progress bar). -->
+                    <Setter Property="Height" Value="56" />
                     <Setter Property="AutomationProperties.Name">
                         <Setter.Value>
                             <MultiBinding StringFormat="{}{0}, {1}">
@@ -118,6 +120,12 @@
                                 <TextBlock Text="{Binding Name}" Style="{StaticResource BodyText}" />
                                 <TextBlock x:Name="Subtitle" Text="{Binding Subtitle}" Style="{StaticResource CaptionText}"
                                            ToolTip="{Binding Subtitle}" Margin="0,1,0,0" />
+                                <!-- A batch being extracted: how far the current archive has got. -->
+                                <controls:SegmentBar Height="3" Margin="0,4,0,0" Fraction="{Binding ProgressFraction}"
+                                                     Fill="{DynamicResource AccentFillColorDefaultBrush}"
+                                                     Track="{DynamicResource DividerStrokeColorDefaultBrush}"
+                                                     Visibility="{Binding HasProgress, Converter={StaticResource BoolToVisibility}}"
+                                                     AutomationProperties.Name="Extraction progress" />
                             </StackPanel>
                             <TextBlock x:Name="Count" Grid.Column="2" Text="{Binding Count}" Style="{StaticResource NumberText}"
                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
@@ -245,6 +253,9 @@
                                              CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                                 <ui:MenuItem Header="Open in browser" Command="{Binding OpenInBrowserCommand}" Icon="{ui:SymbolIcon Globe24}"
                                              CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                <ui:MenuItem Header="Show browser" Command="{Binding ShowBrowserCommand}" Icon="{ui:SymbolIcon WindowNew24}"
+                                             CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                             Visibility="{Binding PlacementTarget.SelectedItem.IsSolving, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
                                 <Separator />
                                 <ui:MenuItem Header="Resume" Command="{Binding ResumeCommand}" Icon="{ui:SymbolIcon Play24}" />
                                 <ui:MenuItem Header="Pause" Command="{Binding PauseCommand}" Icon="{ui:SymbolIcon Pause24}" />
@@ -308,6 +319,13 @@
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static model:DownloadStatus.Completed}">
                                         <Setter TargetName="Bar" Property="Fill" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                                    </DataTrigger>
+                                    <!-- Last, so it wins over Failed: the host page is being solved, not given up on. -->
+                                    <DataTrigger Binding="{Binding IsSolving}" Value="True">
+                                        <Setter TargetName="Bar" Property="Fill" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                        <Setter TargetName="StatusLabel" Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                        <Setter TargetName="StatusLabel" Property="ToolTip"
+                                                Value="Getting through the host's page in a hidden browser. Right-click and choose Show browser to watch." />
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>

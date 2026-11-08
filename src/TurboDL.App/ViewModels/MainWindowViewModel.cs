@@ -163,6 +163,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         if (Directory.Exists(folder)) Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
     }
 
+    /// <summary>The batch's window: its status, extraction progress, parts and log.</summary>
+    [RelayCommand]
+    private void ShowBatchDetails(SidebarFilter? filter)
+    {
+        if (BatchOf(filter) is { } batch) _windows.ShowBatchDetails(batch);
+    }
+
     /// <summary>Forgets the batch; its downloads stay in the list.</summary>
     [RelayCommand]
     private void RemoveBatch(SidebarFilter? filter)
@@ -276,6 +283,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private Task OpenInBrowserAsync(DownloadItemViewModel? item) =>
         item is null ? Task.CompletedTask : _manager.OpenInBrowserAsync(item, userAsked: true);
 
+    /// <summary>Brings the hidden browser solving this download's host page on screen, to watch or help it.</summary>
+    [RelayCommand]
+    private Task ShowBrowserAsync(DownloadItemViewModel? item) =>
+        item is null ? Task.CompletedTask : _manager.ShowBrowserAsync(item);
+
     private void Tick()
     {
         foreach (var item in _manager.Items)
@@ -289,7 +301,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         foreach (var f in Filters)
         {
             f.Count = _manager.Items.Count(f.Match);
-            if (f.BatchId is not null) f.Subtitle = BatchOf(f)?.StatusText;
+            if (f.BatchId is not null && BatchOf(f) is { } batch)
+            {
+                f.Subtitle = batch.StatusText;
+                f.Progress = batch.Progress;
+            }
         }
 
         var active = _manager.Items.Where(i => i.IsRunning).ToList();

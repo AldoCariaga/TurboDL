@@ -4,6 +4,19 @@ namespace TurboDL.Core.Tests;
 
 public sealed class MultipartArchiveTests
 {
+    [Theory]
+    [InlineData(new[] { "game.part01.rar", "game.part02.rar", "game.part04.rar" }, 3, "game.part03.rar")]
+    [InlineData(new[] { "game.part1.rar", "game.part2.rar", "game.part10.rar" }, 3, "game.part3.rar")]
+    [InlineData(new[] { "Game.Part001.RAR", "Game.Part003.RAR" }, 2, "Game.Part002.RAR")]
+    [InlineData(new[] { "data.7z.001", "data.7z.003" }, 2, "data.7z.002")]
+    [InlineData(new[] { "data.zip.0001", "data.zip.0003" }, 2, "data.zip.0002")]
+    public void VolumeName_FollowsTheSetsOwnNaming(string[] present, int number, string expected)
+    {
+        var set = Assert.Single(MultipartArchive.Group(present));
+
+        Assert.Equal(expected, MultipartArchive.VolumeName(set, number));
+    }
+
     private static IEnumerable<string> Parts(string baseName, int count, params int[] skip) =>
         Enumerable.Range(1, count).Where(i => !skip.Contains(i)).Select(i => $"{baseName}.part{i:00}.rar");
 

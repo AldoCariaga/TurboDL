@@ -6,6 +6,7 @@ using Microsoft.Win32;
 using TurboDL.App.Services;
 using TurboDL.Core.Categories;
 using TurboDL.Core.Settings;
+using TurboDL.Core.Sites;
 using ThemeMode = TurboDL.Core.Settings.ThemeMode;
 
 namespace TurboDL.App.ViewModels;
@@ -25,15 +26,24 @@ public sealed partial class DayToggle(DayOfWeek day) : ObservableObject
 
 public sealed record Choice<T>(T Value, string Label);
 
+/// <summary>A loaded site config in Settings: its name, hosts, and where it came from (Built-in, User).</summary>
+public sealed record SiteRow(string Name, string Hosts, string Source, string Origin);
+
+/// <summary>A site config file that didn't load: its file name, and why.</summary>
+public sealed record SiteProblemRow(string File, string Reason, string Path);
+
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly SettingsService _settings;
+    private readonly SiteConfigService _sites;
     private readonly AppSettings _edit;
 
-    public SettingsViewModel(SettingsService settings)
+    public SettingsViewModel(SettingsService settings, SiteConfigService sites)
     {
         _settings = settings;
+        _sites = sites;
         _edit = settings.Edit();
+        FillSites();
 
         DownloadFolder = settings.DownloadFolder;
         DefaultConnections = _edit.DefaultConnections;
@@ -69,6 +79,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     public List<TimeOnly> TimeChoices { get; }
     public IReadOnlyList<DayToggle> Days { get; }
     public ObservableCollection<CategoryRowViewModel> Categories { get; }
+
+    /// <summary>The site configs in use, built-in and the user's.</summary>
+    public ObservableCollection<SiteRow> Sites { get; } = [];
+
+    /// <summary>The user's config files that didn't load.</summary>
+    public ObservableCollection<SiteProblemRow> SiteProblems { get; } = [];
+
+    /// <summary>Where the user's own site configs go.</summary>
+    public string SitesFolder => _sites.Folder;
 
     public IReadOnlyList<Choice<WhenQueueDone>> WhenDoneChoices { get; } =
         Enum.GetValues<WhenQueueDone>().Select(v => new Choice<WhenQueueDone>(v, WhenDoneText.Describe(v))).ToList();
@@ -111,6 +130,41 @@ public sealed partial class SettingsViewModel : ObservableObject
         var dialog = new OpenFolderDialog { Title = "Choose where downloads go" };
         if (Directory.Exists(DownloadFolder)) dialog.InitialDirectory = DownloadFolder;
         if (dialog.ShowDialog() == true) DownloadFolder = dialog.FolderName;
+    }
+
+    [RelayCommand]
+    private void OpenSitesFolder()
+    {
+        try
+        {
+            _sites.OpenFolder();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            Error = $"Couldn't open the sites folder: {ex.Message}";
+        }
+    }
+
+    /// <summary>Reads the site configs again (applies at once: nothing to save).</summary>
+    [RelayCommand]
+    private void ReloadSites()
+    {
+        _sites.Reload();
+        FillSites();
+    }
+
+    private void FillSites()
+    {
+        var catalog = _sites.Catalog;
+        Sites.Clear();
+        foreach (var site in catalog.Sites)
+        {
+            var source = site.Source == SiteSource.BuiltIn ? "Built-in" : site.ReplacesBuiltIn ? "User (replaces built-in)" : "User";
+            Sites.Add(new SiteRow(site.Name, string.Join(", ", site.Hosts), source, site.Origin));
+        }
+        SiteProblems.Clear();
+        foreach (var problem in catalog.Problems)
+            SiteProblems.Add(new SiteProblemRow(Path.GetFileName(problem.File), problem.Reason, problem.File));
     }
 
     [RelayCommand]

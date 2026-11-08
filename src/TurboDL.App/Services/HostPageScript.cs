@@ -19,6 +19,9 @@ internal static class HostPageScript
     /// </summary>
     public const string Scan = """
         ({ ignoreTimers, ignoreBusy }) => {
+          const captchaUnsolved =
+        """ + CaptchaScript.Unsolved + """
+        ;
           const visible = el => {
             if (!el || !el.isConnected) return false;
             const s = getComputedStyle(el);
@@ -32,15 +35,8 @@ internal static class HostPageScript
 
           for (const el of document.querySelectorAll('[data-turbodl-target]')) el.removeAttribute('data-turbodl-target');
 
-          // A CAPTCHA the user still has to solve. Invisible ones (reCAPTCHA v3 badge) don't count.
-          const challenges = [...document.querySelectorAll(
-            '.g-recaptcha, .h-captcha, .cf-turnstile, iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="challenges.cloudflare.com"]')]
-            .filter(el => visible(el) && !el.closest('.grecaptcha-badge') && !/size=invisible/.test(el.getAttribute('src') || ''));
-          if (challenges.length > 0) {
-            const answers = [...document.querySelectorAll(
-              'textarea[name="g-recaptcha-response"], textarea[name="h-captcha-response"], input[name="cf-turnstile-response"]')];
-            if (!answers.some(a => a.value)) return 'captcha|';
-          }
+          // A CAPTCHA the user still has to solve (CaptchaScript).
+          if (captchaUnsolved()) return 'captcha|';
 
           // A countdown still running: the longest one shown.
           if (!ignoreTimers) {

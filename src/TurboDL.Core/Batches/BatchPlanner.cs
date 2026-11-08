@@ -37,10 +37,21 @@ public static class BatchPlanner
     public static IReadOnlyList<TimeSpan> RetryDelays { get; } = [TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(5)];
 
     /// <summary>
+    /// A new batch's name, which is also its folder's: the base name that sorts first among its archive sets, or
+    /// "Batch yyyy-MM-dd HH.mm" when no link names an archive. The add dialog and the service both use it, so they agree.
+    /// </summary>
+    public static string SuggestName(IEnumerable<string> fileNames, DateTime now) =>
+        MultipartArchive.Group(fileNames.Where(n => n.Length > 0)).FirstOrDefault()?.BaseName
+        ?? "Batch " + now.ToString("yyyy-MM-dd HH.mm", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
     /// The next steps for a batch in the Downloading state. Empty = wait. Retry steps may come with nothing else;
     /// Extract/Finish/Attention only once no part is still going or due a retry.
+    /// <paramref name="alreadyInFolder"/>: volumes no part of the batch downloads that are in its folder anyway (got some
+    /// other way, and checked by the caller); they fill gaps in a set, since 7-Zip finds volumes there by name.
     /// </summary>
-    public static IReadOnlyList<BatchStep> Decide(BatchInfo batch, IReadOnlyList<BatchItemState> items)
+    public static IReadOnlyList<BatchStep> Decide(BatchInfo batch, IReadOnlyList<BatchItemState> items,
+        IReadOnlyCollection<string>? alreadyInFolder = null)
     {
         if (batch.Status != BatchStatus.Downloading || items.Count == 0) return [];
 
@@ -73,7 +84,7 @@ public static class BatchPlanner
                 "so the archive can't be extracted. Move the old file away and use Retry, or download into an empty folder.")];
         }
 
-        var sets = MultipartArchive.Group(items.Select(i => i.FileName));
+        var sets = MultipartArchive.Group(items.Select(i => i.FileName).Concat(alreadyInFolder ?? []));
         var incomplete = sets.Where(s => !s.IsComplete).ToList();
         if (incomplete.Count > 0)
         {

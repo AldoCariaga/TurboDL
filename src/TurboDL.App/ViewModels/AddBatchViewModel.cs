@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using TurboDL.App.Services;
 using TurboDL.Core.Archives;
+using TurboDL.Core.Batches;
 using TurboDL.Core.Catching;
 using TurboDL.Core.Categories;
 using TurboDL.Core.Engine;
@@ -119,9 +120,8 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
         var sets = MultipartArchive.Group(_names);
         if (!_folderEdited)
         {
-            var folder = sets.Count == 1
-                ? Path.Combine(rules.FolderFor(Compressed), FileNames.Sanitize(sets[0].BaseName))
-                : rules.FolderFor(Compressed);
+            // One folder per batch, named like the batch: its parts, and Extracted\ with every set in it.
+            var folder = Path.Combine(rules.FolderFor(Compressed), FileNames.Sanitize(BatchPlanner.SuggestName(_names, DateTime.Now)));
             SetQuietly(() => Folder = folder);
         }
 

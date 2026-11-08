@@ -116,6 +116,27 @@ public sealed class BatchPlannerTests
     }
 
     [Fact]
+    public void MissingPart_AlreadyInFolder_Extracts()
+    {
+        // part 3 was deleted from the batch and downloaded separately into the same folder.
+        var steps = BatchPlanner.Decide(Batch(), RarSet("data", 10, skip: 3), alreadyInFolder: ["data.part03.rar"]);
+
+        var extract = Assert.IsType<BatchStep.Extract>(Assert.Single(steps));
+        var set = Assert.Single(extract.Sets);
+        Assert.True(set.IsComplete);
+        Assert.Equal("data.part01.rar", set.FirstVolume);
+    }
+
+    [Fact]
+    public void OnlySomeMissingParts_InFolder_StillNeedsAttention_ForTheRest()
+    {
+        var steps = BatchPlanner.Decide(Batch(), RarSet("data", 5, skip: [2, 4]), alreadyInFolder: ["data.part02.rar"]);
+
+        var attention = Assert.IsType<BatchStep.Attention>(Assert.Single(steps));
+        Assert.Equal("data.part01–05.rar: part 4 is missing.", attention.Message);
+    }
+
+    [Fact]
     public void SeveralPartsMissing_ListsThem()
     {
         var attention = Assert.IsType<BatchStep.Attention>(Assert.Single(BatchPlanner.Decide(Batch(), RarSet("data", 5, skip: [2, 4]))));
@@ -199,4 +220,18 @@ public sealed class BatchPlannerTests
         var extract = Assert.IsType<BatchStep.Extract>(Assert.Single(BatchPlanner.Decide(Batch(), items)));
         Assert.Equal(["a.part01.rar", "b.7z.001"], extract.Sets.Select(s => s.FirstVolume));
     }
+
+    private static readonly DateTime Now = new(2026, 11, 8, 14, 5, 0);
+
+    [Fact]
+    public void SuggestName_OneSet_IsItsBaseName() =>
+        Assert.Equal("Movie", BatchPlanner.SuggestName(["Movie.part1.rar", "Movie.part2.rar", ""], Now));
+
+    [Fact]
+    public void SuggestName_TwoSets_FirstByBaseNameWins() =>
+        Assert.Equal("alpha", BatchPlanner.SuggestName(["zeta.7z.001", "alpha.part01.rar", "zeta.7z.002"], Now));
+
+    [Fact]
+    public void SuggestName_NoArchives_IsTheDate() =>
+        Assert.Equal("Batch 2026-11-08 14.05", BatchPlanner.SuggestName(["notes.txt", "", "photo.jpg"], Now));
 }

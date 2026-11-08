@@ -7,6 +7,7 @@ using TurboDL.Core.Archives;
 using TurboDL.Core.Browser;
 using TurboDL.Core.Engine;
 using TurboDL.Core.Model;
+using TurboDL.Core.Sites;
 using TurboDL.Core.Storage;
 using TurboDL.Core.Video;
 using TurboDL.App.ViewModels;
@@ -36,6 +37,7 @@ public sealed class DownloadManager
     private readonly IUserPrompts prompts;
     private readonly VideoToolsService videoTools;
     private readonly BrowserCapture browser;
+    private readonly SiteConfigService sites;
     private readonly ILogger<DownloadManager> log;
 
     /// <summary>One browser window at a time: a batch whose parts all hit a host page asks for them one by one.</summary>
@@ -51,8 +53,10 @@ public sealed class DownloadManager
     private readonly Dictionary<long, long> _browserSkip = [];
 
     public DownloadManager(HttpClient http, RateLimiter globalLimiter, DownloadStore store, IUserPrompts prompts,
-        VideoToolsService videoTools, BrowserCapture browser, SettingsService settings, ILogger<DownloadManager> log)
+        VideoToolsService videoTools, BrowserCapture browser, SiteConfigService sites, SettingsService settings,
+        ILogger<DownloadManager> log)
     {
+        this.sites = sites;
         this.http = http;
         this.globalLimiter = globalLimiter;
         this.store = store;
@@ -120,9 +124,24 @@ public sealed class DownloadManager
     /// <summary>Starts or resumes. Resuming is a new task over the same info; the engine picks up from the saved segments.</summary>
     public void Start(DownloadItemViewModel item)
     {
-        if (item.IsRunning || item.Info.Status == DownloadStatus.Completed) return;
+        if (item.IsRunning || item.InBrowser || item.Info.Status == DownloadStatus.Completed) return;
+        // A host whose site config says its links only work in a browser: straight to the browser step, which holds the
+        // download's slot the same way a host page found over HTTP does.
+        if (!item.IsVideo && BrowserFirstSite(item.Info) is { } site && EnterBrowser(item))
+        {
+            item.AddLog($"Site config {site.Name}: this host's links go straight to the browser.");
+            _ = RunBrowserAsync(item, userAsked: false, browserFirst: true);
+            return;
+        }
         item.Run = item.IsVideo ? RunVideoAsync(item) : RunAsync(item);
     }
+
+    /// <summary>The site config of the download's host, when it sends links straight to the browser and the link is still the host's page.</summary>
+    private SiteConfig? BrowserFirstSite(DownloadInfo info) =>
+        info.PageUrl is null && SiteFor(info.Url) is { BrowserFirst: true } site ? site : null;
+
+    private SiteConfig? SiteFor(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) ? sites.Catalog.Match(uri) : null;
 
     /// <summary>
     /// Stops a download. A restart that was on its way (new speed limit) is called off: pausing wins. One waiting for the
@@ -177,6 +196,24 @@ public sealed class DownloadManager
     public Task OpenInBrowserAsync(DownloadItemViewModel item, bool userAsked = false) =>
         EnterBrowser(item) ? RunBrowserAsync(item, userAsked) : Task.CompletedTask;
 
+    /// <summary>Show browser: brings the hidden browser solving this download's page on screen.</summary>
+    public async Task ShowBrowserAsync(DownloadItemViewModel item)
+    {
+        if (item.Browser != BrowserStage.Open)
+        {
+            if (item.InBrowser) item.AddLog("Not in the browser yet: pages are solved one at a time, and this one is next in line.");
+            return;
+        }
+        try
+        {
+            await browser.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            item.AddLog("Browser: " + ex.Message);
+        }
+    }
+
     /// <summary>Puts the download in the wait for the browser. False when it can't go (a video, running, already there).</summary>
     private bool EnterBrowser(DownloadItemViewModel item)
     {
@@ -187,10 +224,15 @@ public sealed class DownloadManager
         return true;
     }
 
-    private async Task RunBrowserAsync(DownloadItemViewModel item, bool userAsked)
+    /// <summary>
+    /// <paramref name="browserFirst"/>: it never tried the link over HTTP (its site config said so), so a browser closed
+    /// without the file leaves it Failed; otherwise it would stay Queued and the queue would open the browser again.
+    /// </summary>
+    private async Task RunBrowserAsync(DownloadItemViewModel item, bool userAsked, bool browserFirst = false)
     {
         var ct = item.BrowserCts!.Token;
         CapturedSession? captured = null;
+        string? failure = null;
         try
         {
             await _browserGate.WaitAsync(ct);
@@ -200,18 +242,24 @@ public sealed class DownloadManager
                 if (!userAsked && item.Info.BatchId is { } waitingBatch
                     && _browserSkip.TryGetValue(waitingBatch, out var skipBelow) && item.BrowserTicket < skipBelow)
                 {
-                    item.AddLog("Not opened in the browser: it was closed without a download for another part of this batch. " +
-                                "Right-click and choose Open in browser, or Retry failed parts, to try again.");
+                    failure = "Not opened in the browser: it was closed without a download for another part of this batch. " +
+                              "Right-click and choose Open in browser, or Retry failed parts, to try again.";
+                    item.AddLog(failure);
                     return;
                 }
                 if (browser.NeedsSetup)
                     item.AddLog($"Setting up the browser helper ({PlaywrightTools.SetupSizeText}, first time only).");
                 item.SetBrowser(BrowserStage.Open);
-                item.AddLog("Opening the link in a browser. TurboDL clicks through the page; solve any CAPTCHA or sign-in yourself.");
-                var session = await browser.CaptureAsync(item.Info.Url, status: new Progress<string>(item.AddLog), ct: ct);
+                item.AddLog(userAsked
+                    ? "Opening the link in a browser. TurboDL clicks through the page; solve any CAPTCHA or sign-in yourself."
+                    : "Solving the host's page in a hidden browser. It comes on screen if a CAPTCHA or sign-in needs you.");
+                // Shown from the start only when the user asked for the browser; otherwise hidden until it needs them.
+                var session = await browser.CaptureAsync(item.Info.Url, status: new Progress<string>(item.AddLog), ct: ct,
+                    visible: userAsked, site: SiteFor(item.Info.Url));
                 if (session is null)
                 {
-                    item.AddLog("The browser was closed before a download started.");
+                    failure = "The browser was closed before a download started.";
+                    item.AddLog(failure);
                     if (item.Info.BatchId is { } closedBatch)
                     {
                         _browserSkip[closedBatch] = _browserTickets + 1; // every part waiting right now
@@ -244,7 +292,8 @@ public sealed class DownloadManager
         catch (Exception ex)
         {
             log.LogWarning(ex, "Browser for download {Id} failed", item.Info.Id);
-            item.AddLog("Browser: " + ex.Message);
+            failure = "Browser: " + ex.Message;
+            item.AddLog(failure);
         }
         finally
         {
@@ -255,6 +304,14 @@ public sealed class DownloadManager
 
         // Out of the browser step and straight into downloading, so the download keeps the slot the browser step held.
         if (captured is not null && Items.Contains(item)) UseCapturedSource(item, captured.Url, captured.Headers());
+        else if (browserFirst && failure is not null && Items.Contains(item))
+        {
+            item.Info.Status = DownloadStatus.Failed;
+            item.Info.Error = failure;
+            item.Info.ErrorIsTransient = false;
+            store.Save(item.Info);
+            item.Refresh();
+        }
         BrowserDone?.Invoke(item);
     }
 
@@ -271,6 +328,7 @@ public sealed class DownloadManager
         if (info.Status == DownloadStatus.Completed && !string.IsNullOrEmpty(info.FileName))
             TryDelete(info.FilePath, recycle: false);
 
+        info.PageUrl ??= info.Url;
         info.Url = url;
         info.FinalUrl = null;
         info.FileName = info.RequestedFileName ?? "";

@@ -119,6 +119,25 @@ public static partial class MultipartArchive
             .ThenBy(s => s.Files[0], StringComparer.OrdinalIgnoreCase)];
     }
 
+    /// <summary>
+    /// The name volume <paramref name="number"/> of <paramref name="set"/> has, written like the set's own volumes
+    /// (the same padding: part3 next to part1, part03 next to part01). For a missing volume, to look for it on disk.
+    /// </summary>
+    public static string VolumeName(VolumeSet set, int number)
+    {
+        var sample = set.Files[0];
+        var m = set.Scheme switch
+        {
+            VolumeScheme.RarParts => RarPartsName().Match(sample),
+            VolumeScheme.Split => SplitName().Match(sample),
+            _ => Match.Empty,
+        };
+        if (!m.Success) return sample; // Single: the one file is the only volume
+        var digits = m.Groups["n"];
+        var text = number.ToString(CultureInfo.InvariantCulture).PadLeft(digits.Length, '0');
+        return sample[..digits.Index] + text + sample[(digits.Index + digits.Length)..];
+    }
+
     /// <summary>"data.part01–50.rar", "data.7z.001–003", "testdata.zip.001–003", "data.rar" for summaries.</summary>
     public static string Describe(VolumeSet set)
     {

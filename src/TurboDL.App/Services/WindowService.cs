@@ -8,6 +8,7 @@ namespace TurboDL.App.Services;
 public sealed class WindowService(IServiceProvider services)
 {
     private readonly Dictionary<long, DetailsWindow> _details = [];
+    private readonly Dictionary<long, BatchDetailsWindow> _batchDetails = [];
     private SettingsWindow? _settings;
 
     /// <summary>Brings the main window back from the tray or from behind other windows.</summary>
@@ -38,6 +39,21 @@ public sealed class WindowService(IServiceProvider services)
         window.Show();
     }
 
+    /// <summary>The batch's window (one per batch): status, extraction progress, parts and log.</summary>
+    public void ShowBatchDetails(BatchViewModel batch)
+    {
+        if (_batchDetails.TryGetValue(batch.Info.Id, out var open))
+        {
+            open.Activate();
+            return;
+        }
+        var window = new BatchDetailsWindow(batch);
+        PlaceNear(window);
+        _batchDetails[batch.Info.Id] = window;
+        window.Closed += (_, _) => _batchDetails.Remove(batch.Info.Id);
+        window.Show();
+    }
+
     public void ShowSettings()
     {
         if (_settings is not null)
@@ -45,7 +61,8 @@ public sealed class WindowService(IServiceProvider services)
             _settings.Activate();
             return;
         }
-        var vm = new SettingsViewModel((SettingsService)services.GetService(typeof(SettingsService))!);
+        var vm = new SettingsViewModel((SettingsService)services.GetService(typeof(SettingsService))!,
+            (SiteConfigService)services.GetService(typeof(SiteConfigService))!);
         _settings = new SettingsWindow(vm);
         PlaceNear(_settings);
         _settings.Closed += (_, _) => _settings = null;

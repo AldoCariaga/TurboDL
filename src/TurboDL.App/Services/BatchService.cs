@@ -93,8 +93,7 @@ public sealed class BatchService
     public BatchViewModel Create(BatchRequest request)
     {
         var urlNames = request.Urls.Select(NameFromUrl).ToList();
-        var name = MultipartArchive.Group(urlNames.Where(n => n.Length > 0)).FirstOrDefault()?.BaseName
-                   ?? "Batch " + DateTime.Now.ToString("yyyy-MM-dd HH.mm");
+        var name = BatchPlanner.SuggestName(urlNames, DateTime.Now);
 
         var info = new BatchInfo
         {
@@ -147,6 +146,9 @@ public sealed class BatchService
             CancelRetry(item.Info.Id);
             StartPart(item);
         }
+        batch.AddLog(failed.Count == 0 ? "Retry: no failed parts, so the batch is checked again." : $"Retrying {failed.Count} failed part(s).");
+        // Nothing to retry (a missing part was got some other way): look again now, or the batch would sit there.
+        if (failed.Count == 0) Evaluate(batch);
         batch.Refresh(ItemsOf(batch));
     }
 
@@ -196,6 +198,7 @@ public sealed class BatchService
     public void ExtractNow(BatchViewModel batch)
     {
         if (_extracting.ContainsKey(batch.Info.Id) || ItemsOf(batch).Any(i => i.IsRunning)) return;
+        batch.AddLog("Extract now.");
         batch.Info.Status = BatchStatus.Downloading;
         Evaluate(batch, forceExtract: true);
         Save(batch);
@@ -228,6 +231,7 @@ public sealed class BatchService
     private void OnEnded(DownloadItemViewModel item)
     {
         OnPartEnded(item);
+        ResumeBatchesMissing(item);
         StartWaiting();
     }
 
@@ -241,12 +245,24 @@ public sealed class BatchService
             var kind = FileSniffer.SniffFile(info.FilePath);
             if (kind == FileKind.Html && !LooksLikePage(info.FileName))
             {
+                batch.AddLog($"{info.FileName}: the host sent a web page, not the file; solving it in the browser.");
                 manager.MarkFailed(item, DownloadTask.HostPageMessage);
                 _ = manager.OpenInBrowserAsync(item);
             }
             else if (!FileSniffer.MatchesName(info.FileName, kind))
+            {
+                batch.AddLog($"{info.FileName}: downloaded, but it isn't a valid {ArchiveExtension(info.FileName)} file.");
                 manager.MarkFailed(item, $"{info.FileName} isn't a valid {ArchiveExtension(info.FileName)} file. " +
                                          "The host may have sent something else; check the link in your browser.");
+            }
+        }
+        else if (info.Status == DownloadStatus.Failed && !item.IsBusy)
+        {
+            batch.AddLog($"{PartName(item)} failed: {info.Error}");
+        }
+        else if (info.Status == DownloadStatus.Failed && item.InBrowser)
+        {
+            batch.AddLog($"{PartName(item)}: {info.Error} Solving it in the browser.");
         }
         Evaluate(batch);
     }
@@ -259,6 +275,7 @@ public sealed class BatchService
     private void OnSourceReplaced(DownloadItemViewModel item)
     {
         if (Find(item.Info.BatchId) is not { } batch) return;
+        batch.AddLog($"{PartName(item)}: the browser found the file; downloading it.");
         CancelRetry(item.Info.Id);
         batch.Info.Retries.Remove(item.Info.Id);
         if (batch.Info.Status == BatchStatus.NeedsAttention)
@@ -276,9 +293,20 @@ public sealed class BatchService
     /// </summary>
     private void OnBrowserDone(DownloadItemViewModel item)
     {
-        if (Find(item.Info.BatchId) is { } batch) Evaluate(batch);
+        if (Find(item.Info.BatchId) is { } batch)
+        {
+            if (!item.IsRunning)
+                batch.AddLog($"{PartName(item)}: left the browser without the file ({(item.Status == DownloadStatus.Paused ? "paused" : "closed")}).");
+            Evaluate(batch);
+        }
         StartWaiting();
     }
+
+    /// <summary>A part's name for the log: the name it was added with, else its file name, else its link.</summary>
+    private static string PartName(DownloadItemViewModel item) =>
+        item.Info.RequestedFileName is { Length: > 0 } requested ? requested
+        : item.Info.FileName.Length > 0 ? item.Info.FileName
+        : item.Info.Url;
 
     private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
@@ -301,6 +329,50 @@ public sealed class BatchService
         }
     }
 
+    /// <summary>
+    /// The volumes a batch's sets are missing that are in its folder anyway, got some other way (downloaded separately
+    /// after the part was removed from the batch, or copied there). Each has to look like the archive its name says,
+    /// the same check a downloaded part gets. 7-Zip finds them there by name when it extracts.
+    /// </summary>
+    private static List<string> VolumesAlreadyInFolder(BatchInfo info, IReadOnlyList<DownloadItemViewModel> items)
+    {
+        var found = new List<string>();
+        foreach (var set in MultipartArchive.Group(items.Select(i => i.Info.FileName)))
+        {
+            foreach (var number in set.Missing)
+            {
+                var name = MultipartArchive.VolumeName(set, number);
+                var path = Path.Combine(info.Directory, name);
+                if (File.Exists(path) && FileSniffer.MatchesName(name, FileSniffer.SniffFile(path))) found.Add(name);
+            }
+        }
+        return found;
+    }
+
+    /// <summary>
+    /// A download outside any batch finished as a volume a stuck batch in the same folder was missing: the batch picks up
+    /// again (and extracts if that was the last gap).
+    /// </summary>
+    private void ResumeBatchesMissing(DownloadItemViewModel item)
+    {
+        var info = item.Info;
+        if (info.BatchId is not null || info.Status != DownloadStatus.Completed || info.FileName.Length == 0
+            || string.IsNullOrWhiteSpace(info.Directory)) return;
+        foreach (var batch in Batches.Where(b => b.Info.Status == BatchStatus.NeedsAttention
+                                                 && string.Equals(Path.GetFullPath(b.Info.Directory), Path.GetFullPath(info.Directory),
+                                                     StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            var missing = MultipartArchive.Group(ItemsOf(batch).Select(i => i.Info.FileName))
+                .SelectMany(set => set.Missing.Select(n => MultipartArchive.VolumeName(set, n)));
+            if (!missing.Contains(info.FileName, StringComparer.OrdinalIgnoreCase)) continue;
+            batch.AddLog($"{info.FileName}, which this batch was missing, finished as a separate download; carrying on.");
+            batch.Info.Status = BatchStatus.Downloading;
+            batch.Info.Message = null;
+            Evaluate(batch);
+            Save(batch);
+        }
+    }
+
     /// <summary>Asks the planner what's next for a downloading batch and does it; refreshes the status line either way.</summary>
     private void Evaluate(BatchViewModel batch, bool forceExtract = false)
     {
@@ -315,8 +387,11 @@ public sealed class BatchService
             IReadOnlyList<BatchStep> steps;
             var autoExtract = info.AutoExtract;
             if (forceExtract) info.AutoExtract = true;
-            try { steps = BatchPlanner.Decide(info, states); }
+            var inFolder = VolumesAlreadyInFolder(info, items);
+            try { steps = BatchPlanner.Decide(info, states, inFolder); }
             finally { info.AutoExtract = autoExtract; }
+            if (inFolder.Count > 0 && steps.Any(s => s is BatchStep.Extract or BatchStep.Finish))
+                batch.AddLog($"Using {string.Join(", ", inFolder)}, already in the folder (got some other way).");
 
             foreach (var step in steps)
             {
@@ -333,6 +408,7 @@ public sealed class BatchService
                         info.Message = finish.Message;
                         info.FinishedUtc = DateTime.UtcNow;
                         Save(batch);
+                        batch.AddLog(finish.Message);
                         Notify?.Invoke("Batch finished", $"{info.Name}: {finish.Message}", () => OpenFolder(info.Directory));
                         break;
                     case BatchStep.Attention attention:
@@ -352,6 +428,7 @@ public sealed class BatchService
         batch.Info.Retries[id] = retry.Attempt;
         Save(batch);
         item.AddLog($"Batch: retry {retry.Attempt} of {BatchPlanner.RetryDelays.Count} in {Describe(retry.Delay)}");
+        batch.AddLog($"{PartName(item)}: retry {retry.Attempt} of {BatchPlanner.RetryDelays.Count} in {Describe(retry.Delay)}.");
 
         var timer = new DispatcherTimer { Interval = retry.Delay };
         timer.Tick += (_, _) =>
@@ -385,6 +462,7 @@ public sealed class BatchService
         {
             if (!sevenZip.IsInstalled)
             {
+                batch.AddLog($"Setting up 7-Zip ({SevenZipTools.SetupSizeText}, first time only).");
                 SetBusy(batch, $"Setting up 7-Zip ({SevenZipTools.SetupSizeText}, once)…");
                 try
                 {
@@ -395,44 +473,83 @@ public sealed class BatchService
                 catch (Exception ex) when (ex is not OperationCanceledException || !cts.IsCancellationRequested)
                 {
                     log.LogWarning(ex, "Setting up 7-Zip failed");
+                    batch.AddLog($"Couldn't set up 7-Zip: {ex.Message}");
                     NeedsAttention(batch, $"Couldn't set up 7-Zip: {ex.Message}");
                     return;
                 }
             }
 
             var dir = info.Directory;
-            foreach (var set in sets)
+            var all = Stopwatch.StartNew();
+            // One folder for the whole batch: every set goes into dir\Extracted (or "Extracted (2)" when that one is in
+            // use, such as after an extraction cut short by closing the app). 7-Zip renames a name that clashes (-aou).
+            var output = ArchiveExtractor.ChooseOutputDirectory(dir, "Extracted");
+            batch.AddLog(sets.Count == 1 ? $"Extracting into {output}" : $"Extracting {sets.Count} archives into {output}, one after another.");
+            for (var index = 0; index < sets.Count; index++)
             {
-                var output = ArchiveExtractor.ChooseOutputDirectory(dir, FileNames.Sanitize(set.BaseName));
-                SetBusy(batch, $"Extracting {MultipartArchive.Describe(set)}…");
-                var result = await ArchiveExtractor.ExtractAsync(sevenZip.SevenZipPath, Path.Combine(dir, set.FirstVolume!),
-                    output, null, cts.Token);
+                var set = sets[index];
+                var label = MultipartArchive.Describe(set);
+                // The percentage first: the sidebar is narrow, and the archive's name is the part that can be cut off.
+                var of = sets.Count > 1 ? $" · {index + 1} of {sets.Count}" : "";
+                batch.SetProgress(0);
+                SetBusy(batch, $"0%{of} · {label}");
+                if (sets.Count > 1) batch.AddLog($"{label}: extracting.");
+
+                // 7-Zip reports from a background thread; Progress posts here. A late report must not touch the next archive.
+                var current = true;
+                var progress = new Progress<ExtractProgress>(p =>
+                {
+                    if (!current) return;
+                    batch.SetProgress(p.Percent / 100.0);
+                    SetBusy(batch, $"{p.Percent}%{of} · {label}");
+                });
+                var watch = Stopwatch.StartNew();
+                ExtractResult result;
+                try
+                {
+                    result = await ArchiveExtractor.ExtractAsync(sevenZip.SevenZipPath, Path.Combine(dir, set.FirstVolume!),
+                        output, null, cts.Token, progress);
+                }
+                finally
+                {
+                    current = false;
+                }
                 if (!result.Ok)
                 {
                     // The parts stay, so the user can fix the problem and extract again.
+                    batch.AddLog($"{label}: failed after {Took(watch.Elapsed)}. {result.Error}");
                     NeedsAttention(batch, result.Error ?? "Extracting failed.");
                     return;
                 }
+                batch.AddLog(result.Warnings.Count == 0
+                    ? $"{label}: done in {Took(watch.Elapsed)}."
+                    : $"{label}: done in {Took(watch.Elapsed)}, with {result.Warnings.Count} warning(s) from 7-Zip: {result.Warnings[0]}");
 
-                info.ExtractedTo.Add(output);
+                if (!info.ExtractedTo.Contains(output, StringComparer.OrdinalIgnoreCase)) info.ExtractedTo.Add(output);
                 Save(batch);
-                if (info.DeleteParts) manager.RecycleFiles(set.Files.Select(f => Path.Combine(dir, f)));
+                if (info.DeleteParts)
+                {
+                    manager.RecycleFiles(set.Files.Select(f => Path.Combine(dir, f)));
+                    batch.AddLog($"{label}: its {set.Files.Count} part(s) went to the Recycle Bin.");
+                }
             }
 
             info.Status = BatchStatus.Extracted;
             info.Message = null;
             info.FinishedUtc = DateTime.UtcNow;
             Save(batch);
-            var folder = info.ExtractedTo[0];
-            Notify?.Invoke("Extracted", $"{info.Name} → {folder}", () => OpenFolder(folder));
+            batch.AddLog($"All extracted in {Took(all.Elapsed)}.");
+            Notify?.Invoke("Extracted", $"{info.Name} → {output}", () => OpenFolder(output));
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
             // Closing the app: the status stays Extracting, so the next start extracts again.
+            batch.AddLog("Extracting stopped (TurboDL is closing); it starts again next time.");
         }
         catch (Exception ex)
         {
             log.LogWarning(ex, "Extracting batch {Id} failed", info.Id);
+            batch.AddLog($"Extracting failed: {ex.Message}");
             NeedsAttention(batch, ex.Message);
         }
         finally
@@ -451,8 +568,16 @@ public sealed class BatchService
         info.Status = BatchStatus.NeedsAttention;
         info.Message = message;
         Save(batch);
-        if (changed) Notify?.Invoke("Batch needs attention", $"{info.Name}: {message}", WindowService.ShowMain);
+        if (!changed) return;
+        batch.AddLog("Needs attention: " + message);
+        Notify?.Invoke("Batch needs attention", $"{info.Name}: {message}", WindowService.ShowMain);
     }
+
+    /// <summary>"12 s", "4 min 05 s", "1 h 02 min" for the log.</summary>
+    private static string Took(TimeSpan t) =>
+        t.TotalHours >= 1 ? $"{(int)t.TotalHours} h {t.Minutes:00} min"
+        : t.TotalMinutes >= 1 ? $"{(int)t.TotalMinutes} min {t.Seconds:00} s"
+        : $"{Math.Max(1, (int)Math.Round(t.TotalSeconds))} s";
 
     private void SetBusy(BatchViewModel batch, string text)
     {

@@ -95,7 +95,7 @@ public static class Cleanup
     /// <summary>The yt-dlp/ffmpeg/Deno/7-Zip folder TurboDL downloads on first use (re-downloadable, not the user's data).</summary>
     public static string ToolsDir(InstallLocations locations) => Path.Combine(locations.UserDataDir, "tools");
 
-    /// <summary>Deletes the downloaded tools, and with <paramref name="userData"/> the whole data folder (list, settings, logs).</summary>
+    /// <summary>Deletes the downloaded tools, and with <paramref name="userData"/> the whole data folder (list, settings, site configs, logs).</summary>
     public static void UserData(InstallLocations locations, bool tools, bool userData)
     {
         if (userData)

@@ -76,6 +76,9 @@ public sealed partial class DownloadItemViewModel : ObservableObject
 
     public bool InBrowser => Browser != BrowserStage.None;
 
+    /// <summary>"Solving": its file host's page is being clicked through, or is waiting its turn in the browser.</summary>
+    public bool IsSolving => InBrowser && !IsRunning;
+
     /// <summary>
     /// Running, or in its browser step: either way it holds one of the "downloads at once" slots, and Pause stops it.
     /// The browser step is part of getting the file, so a host page doesn't free the slot for the next link.
@@ -167,8 +170,7 @@ public sealed partial class DownloadItemViewModel : ObservableObject
             DownloadStatus.Failed => "Failed",
             _ => "",
         };
-        if (task is null && Browser != BrowserStage.None)
-            StatusText = Browser == BrowserStage.Open ? "In browser" : "Waiting for browser";
+        if (IsSolving) StatusText = "Solving";
 
         RaiseStateChanged();
     }
@@ -222,6 +224,7 @@ public sealed partial class DownloadItemViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsRunning));
         OnPropertyChanged(nameof(IsBusy));
+        OnPropertyChanged(nameof(IsSolving));
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanPause));
         OnPropertyChanged(nameof(VideoDescription));
