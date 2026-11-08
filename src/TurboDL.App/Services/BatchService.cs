@@ -534,6 +534,8 @@ public sealed class BatchService
                 }
             }
 
+            MoveLooseFiles(batch, dir, output);
+
             info.Status = BatchStatus.Extracted;
             info.Message = null;
             info.FinishedUtc = DateTime.UtcNow;
@@ -571,6 +573,42 @@ public sealed class BatchService
         if (!changed) return;
         batch.AddLog("Needs attention: " + message);
         Notify?.Invoke("Batch needs attention", $"{info.Name}: {message}", WindowService.ShowMain);
+    }
+
+    /// <summary>
+    /// Moves the batch's finished downloads that aren't archives (a repack's loose .bin files, a readme) from the batch
+    /// folder into <paramref name="output"/>, next to what the archives held, so that one folder has everything. A name
+    /// that's taken there gets " (2)". Each row is pointed at the file's new place. A file that can't be moved (in use)
+    /// stays where it is, and the log says so; it doesn't stop the batch.
+    /// </summary>
+    private void MoveLooseFiles(BatchViewModel batch, string dir, string output)
+    {
+        var moved = new List<string>();
+        foreach (var item in ItemsOf(batch))
+        {
+            var info = item.Info;
+            if (info.Status != DownloadStatus.Completed || info.FileName.Length == 0
+                || MultipartArchive.TryParse(info.FileName, out _, out _, out _)
+                || !string.Equals(Path.GetFullPath(info.Directory), Path.GetFullPath(dir), StringComparison.OrdinalIgnoreCase)
+                || !File.Exists(info.FilePath)) continue;
+            try
+            {
+                Directory.CreateDirectory(output);
+                var name = FileNames.MakeUnique(output, info.FileName);
+                File.Move(info.FilePath, Path.Combine(output, name));
+                info.Directory = output;
+                info.FileName = name;
+                store.Save(info);
+                item.Refresh();
+                moved.Add(name);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                batch.AddLog($"{info.FileName} couldn't be moved into {output}: {ex.Message}");
+            }
+        }
+        if (moved.Count > 0)
+            batch.AddLog($"Moved {moved.Count} file(s) that aren't archives into {output}: {string.Join(", ", moved)}.");
     }
 
     /// <summary>"12 s", "4 min 05 s", "1 h 02 min" for the log.</summary>
