@@ -47,7 +47,8 @@ public sealed class WindowService(IServiceProvider services)
             open.Activate();
             return;
         }
-        var window = new BatchDetailsWindow(batch);
+        var window = new BatchDetailsWindow(batch, (BatchService)services.GetService(typeof(BatchService))!,
+            (AddBatchPrompt)services.GetService(typeof(AddBatchPrompt))!);
         PlaceNear(window);
         _batchDetails[batch.Info.Id] = window;
         window.Closed += (_, _) => _batchDetails.Remove(batch.Info.Id);

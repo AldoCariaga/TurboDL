@@ -23,6 +23,9 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
 
     private IReadOnlyList<Uri> _links = [];
     private IReadOnlyList<string> _names = [];
+
+    /// <summary>Adding to a batch: the names its parts already have (they count towards its archive sets).</summary>
+    private IReadOnlyList<string> _existing = [];
     private bool _folderEdited;
     private bool _updating;
     private bool _blocked;
@@ -47,18 +50,41 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
 
     [ObservableProperty] public partial NoteKind SummaryKind { get; private set; }
 
+    /// <summary>True when the links go into an existing batch: its folder and extract settings stay as they are.</summary>
+    [ObservableProperty] public partial bool IsAddingToBatch { get; private set; }
+
+    [ObservableProperty] public partial string Title { get; private set; } = "Add batch";
+
     /// <summary>Set when the user confirms; read by whoever opened the dialog.</summary>
     public BatchRequest? Result { get; private set; }
 
     public event Action? CloseRequested;
 
-    /// <summary>Fills in the links from the caller, else from the clipboard when it holds two or more links.</summary>
+    /// <summary>Fills in the links from the caller, else from the clipboard when it holds two or more links (one when adding to a batch).</summary>
     public void Prefill(string? text)
     {
         Connections = settings.Current.DefaultConnections;
-        var value = text ?? ClipboardLinks() ?? "";
+        // Adding to a batch, one copied link is enough: it's often the one part that was missing.
+        var value = text ?? ClipboardLinks(IsAddingToBatch ? 1 : 2) ?? "";
         if (value == Text) Update();
         else Text = value;
+    }
+
+    /// <summary>
+    /// Adding links to <paramref name="batch"/>: its folder is fixed, and the names of <paramref name="parts"/> count
+    /// towards its archive sets (so a missing part shows as found) and can't be added twice.
+    /// </summary>
+    public void PrefillForBatch(BatchViewModel batch, IReadOnlyList<DownloadItemViewModel> parts)
+    {
+        IsAddingToBatch = true;
+        Title = $"Add links to {batch.Name}";
+        _existing = [.. parts.Select(p => p.Info.RequestedFileName is { Length: > 0 } r ? r : p.Info.FileName).Where(n => n.Length > 0)];
+        _folderEdited = true;
+        SetQuietly(() => Folder = batch.Info.Directory);
+        AutoExtract = batch.Info.AutoExtract;
+        DeleteParts = batch.Info.DeleteParts;
+        Prefill(null);
+        if (parts.FirstOrDefault() is { } first) Connections = first.Info.Connections;
     }
 
     partial void OnTextChanged(string value)
@@ -117,7 +143,7 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
     /// <summary>Picks the folder (until the user edits it), rewrites the summary and checks for clashes.</summary>
     private void Update()
     {
-        var sets = MultipartArchive.Group(_names);
+        var sets = MultipartArchive.Group(_existing.Concat(_names));
         if (!_folderEdited)
         {
             // One folder per batch, named like the batch: its parts, and Extracted\ with every set in it.
@@ -142,6 +168,9 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
 
         if (_names.GroupBy(n => n, StringComparer.OrdinalIgnoreCase).FirstOrDefault(g => g.Count() > 1) is { } twice)
             return ($"Two links would save as {twice.Key}. Remove one of them.", NoteKind.Error);
+
+        if (_names.FirstOrDefault(n => _existing.Contains(n, StringComparer.OrdinalIgnoreCase)) is { } inBatch)
+            return ($"{inBatch} is already in this batch. Remove that link.", NoteKind.Error);
 
         if (HasBadCharacters(Folder.Trim()))
             return ("The folder name has a character Windows doesn't allow (a line break, or one of < > : \" | ? *). " +
@@ -218,12 +247,12 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
         return last.Length == 0 || !Path.HasExtension(last) ? "" : FileNames.Sanitize(last);
     }
 
-    private static string? ClipboardLinks()
+    private static string? ClipboardLinks(int atLeast)
     {
         try
         {
             var text = System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : null;
-            return UrlExtractor.ExtractAll(text).Count >= 2 ? text : null;
+            return UrlExtractor.ExtractAll(text).Count >= atLeast ? text : null;
         }
         catch (System.Runtime.InteropServices.COMException)
         {

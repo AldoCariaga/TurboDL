@@ -7,7 +7,7 @@
                  xmlns:vm="clr-namespace:TurboDL.App.ViewModels"
                  mc:Ignorable="d"
                  d:DataContext="{d:DesignInstance vm:AddBatchViewModel}"
-                 Title="Add batch"
+                 Title="{Binding Title}"
                  Width="640" SizeToContent="Height" ResizeMode="NoResize"
                  ShowInTaskbar="False"
                  ExtendsContentIntoTitleBar="True"
@@ -16,7 +16,7 @@
                  FontFamily="{StaticResource TextFont}">
 
     <StackPanel>
-        <ui:TitleBar Title="Add batch" ShowMinimize="False" ShowMaximize="False" />
+        <ui:TitleBar Title="{Binding Title}" ShowMinimize="False" ShowMaximize="False" />
 
         <StackPanel Margin="24,4,24,20">
             <TextBlock Text="Links" Style="{StaticResource FieldLabel}" />
@@ -38,9 +38,12 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <ui:TextBox Text="{Binding Folder, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Save to" />
+                <!-- Adding to a batch: its parts are all in one folder, so the new ones go there too. -->
+                <ui:TextBox Text="{Binding Folder, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Save to"
+                            IsReadOnly="{Binding IsAddingToBatch}" />
                 <ui:Button Grid.Column="1" Margin="8,0,0,0" Command="{Binding BrowseCommand}" Content="Browse"
-                           VerticalAlignment="Stretch" />
+                           VerticalAlignment="Stretch"
+                           Visibility="{Binding IsAddingToBatch, Converter={StaticResource InverseBoolToVisibility}}" />
             </Grid>
 
             <TextBlock Text="Connections" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
@@ -51,12 +54,14 @@
                 <TextBlock Text="Per file, 1 to 32" Style="{StaticResource CaptionText}" Margin="12,0,0,0" />
             </StackPanel>
 
+            <StackPanel Visibility="{Binding IsAddingToBatch, Converter={StaticResource InverseBoolToVisibility}}">
             <ui:ToggleSwitch IsChecked="{Binding AutoExtract}" Margin="0,16,0,0"
                              Content="Extract when all parts have downloaded"
                              AutomationProperties.Name="Extract when all parts have downloaded" />
             <ui:ToggleSwitch IsChecked="{Binding DeleteParts}" IsEnabled="{Binding AutoExtract}" Margin="0,8,0,0"
                              Content="Delete the parts after extracting (to the Recycle Bin)"
                              AutomationProperties.Name="Delete the parts after extracting" />
+            </StackPanel>
 
             <Expander Header="Sign-in for file hosts (optional)" Margin="0,16,0,0">
                 <StackPanel Margin="0,8,0,0">

@@ -31,6 +31,9 @@
                      DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
             <ui:MenuItem Header="Details" Command="{Binding ShowBatchDetailsCommand}" Icon="{ui:SymbolIcon Info24}"
                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <ui:MenuItem Header="Add links…" Command="{Binding AddToBatchCommand}" Icon="{ui:SymbolIcon Add24}"
+                         ToolTip="Add links to this batch while it's still downloading: a missing part, or ones left out"
+                         CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             <ui:MenuItem Header="Retry failed parts" Command="{Binding RetryBatchCommand}" Icon="{ui:SymbolIcon ArrowClockwise24}"
                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             <ui:MenuItem Header="Extract now" Command="{Binding ExtractBatchCommand}" Icon="{ui:SymbolIcon FolderZip24}"

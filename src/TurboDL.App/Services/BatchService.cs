@@ -129,6 +129,56 @@ public sealed class BatchService
         return batch;
     }
 
+    /// <summary>Links can be added while the batch is still downloading or waiting for the user, not once it extracts or is done.</summary>
+    public bool CanAddTo(BatchViewModel batch) =>
+        Batches.Contains(batch) && !_extracting.ContainsKey(batch.Info.Id)
+        && batch.Info.Status is BatchStatus.Downloading or BatchStatus.NeedsAttention;
+
+    /// <summary>The batch's downloads, for the Add links dialog's checks.</summary>
+    public IReadOnlyList<DownloadItemViewModel> PartsOf(BatchViewModel batch) => ItemsOf(batch);
+
+    /// <summary>
+    /// Adds links to a batch that hasn't finished: one download per link in the batch's folder, like <see cref="Create"/>.
+    /// Without headers from the dialog they take the ones the batch's parts were added with (not a browser's session).
+    /// A batch that was stuck (a part missing) carries on, and extracts once every part is in.
+    /// </summary>
+    public void AddTo(BatchViewModel batch, BatchRequest request)
+    {
+        if (!CanAddTo(batch) || request.Urls.Count == 0) return;
+        var info = batch.Info;
+        var parts = ItemsOf(batch);
+        var headers = request.Headers.Count > 0
+            ? new Dictionary<string, string>(request.Headers)
+            : parts.FirstOrDefault() is { } first ? new Dictionary<string, string>(first.Info.PageHeaders ?? first.Info.Headers) : [];
+
+        foreach (var url in request.Urls)
+        {
+            var urlName = NameFromUrl(url);
+            manager.Add(new DownloadInfo
+            {
+                Url = url.ToString(),
+                FileName = urlName,
+                Directory = info.Directory,
+                Category = rules.CategoryFor(urlName is "" ? null : urlName),
+                Connections = request.Connections,
+                Headers = new(headers),
+                ExpectFile = true,
+                BatchId = info.Id,
+                RequestedFileName = urlName,
+            }, startNow: false);
+        }
+
+        if (info.Status == BatchStatus.NeedsAttention)
+        {
+            info.Status = BatchStatus.Downloading;
+            info.Message = null;
+        }
+        batch.AddLog(request.Urls.Count == 1 ? "Added 1 link." : $"Added {request.Urls.Count} links.");
+        Save(batch);
+        if (request.StartNow) queue.Start();
+        Evaluate(batch);
+    }
+
     /// <summary>Starts the batch's failed parts again, with a fresh set of automatic retries.</summary>
     public void RetryFailed(BatchViewModel batch)
     {

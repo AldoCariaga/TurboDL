@@ -13,8 +13,25 @@ public sealed class AddBatchPrompt(IServiceProvider services)
     {
         var vm = services.GetRequiredService<AddBatchViewModel>();
         vm.Prefill(text);
+        ShowDialog(vm, null);
+        return vm.Result is { } request ? services.GetRequiredService<BatchService>().Create(request) : null;
+    }
 
-        var owner = Application.Current.MainWindow;
+    /// <summary>The same dialog for adding links to a batch that hasn't finished (sidebar menu, batch details).</summary>
+    public void ShowForBatch(BatchViewModel batch, Window? owner = null)
+    {
+        var batches = services.GetRequiredService<BatchService>();
+        if (!batches.CanAddTo(batch)) return;
+        var vm = services.GetRequiredService<AddBatchViewModel>();
+        vm.PrefillForBatch(batch, batches.PartsOf(batch));
+        ShowDialog(vm, owner);
+        // The batch may have started extracting while the dialog was open; AddTo checks again.
+        if (vm.Result is { } request) batches.AddTo(batch, request);
+    }
+
+    private static void ShowDialog(AddBatchViewModel vm, Window? owner)
+    {
+        owner ??= Application.Current.MainWindow;
         var window = new AddBatchWindow(vm)
         {
             Owner = owner is { IsVisible: true } ? owner : null,
@@ -23,7 +40,5 @@ public sealed class AddBatchPrompt(IServiceProvider services)
                 : WindowStartupLocation.CenterScreen,
         };
         window.ShowDialog();
-
-        return vm.Result is { } request ? services.GetRequiredService<BatchService>().Create(request) : null;
     }
 }

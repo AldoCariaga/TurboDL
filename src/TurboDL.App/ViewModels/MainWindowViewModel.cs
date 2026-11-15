@@ -142,6 +142,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         NotifyCommands();
     }
 
+    /// <summary>Adds links to a batch that hasn't finished: a missing part, or ones left out.</summary>
+    [RelayCommand(CanExecute = nameof(CanAddToBatch))]
+    private void AddToBatch(SidebarFilter? filter)
+    {
+        if (BatchOf(filter) is { } batch) _addBatch.ShowForBatch(batch);
+        NotifyCommands();
+    }
+
+    private bool CanAddToBatch(SidebarFilter? filter) => BatchOf(filter) is { } batch && _batches.CanAddTo(batch);
+
     [RelayCommand]
     private void RetryBatch(SidebarFilter? filter)
     {
@@ -347,6 +357,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         PauseCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
         ToggleQueueCommand.NotifyCanExecuteChanged();
+        AddToBatchCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>Category entries follow the rules in Settings; the status views above them never change.</summary>

@@ -85,6 +85,8 @@
 
         <DockPanel Grid.Row="3" Margin="24,16" LastChildFill="False">
             <ui:Button DockPanel.Dock="Left" Content="Open folder" Click="OnOpenFolder" />
+            <ui:Button x:Name="AddLinks" DockPanel.Dock="Left" Content="Add links…" Click="OnAddLinks" Margin="8,0,0,0"
+                       ToolTip="Add links to this batch while it's still downloading: a missing part, or ones left out" />
             <ui:Button DockPanel.Dock="Right" Content="Close" IsCancel="True" Click="OnClose" MinWidth="88" />
         </DockPanel>
     </Grid>
