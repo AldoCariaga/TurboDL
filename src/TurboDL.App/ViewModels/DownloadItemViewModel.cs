@@ -82,6 +82,12 @@ public sealed partial class DownloadItemViewModel : ObservableObject
     /// <summary>The link the download was added with: the host's page when a browser handed over a direct link, else its link.</summary>
     public string OriginalLink => Info.PageUrl ?? Info.Url;
 
+    /// <summary>The link TurboDL downloads from: the direct one a browser handed over, else the link it was added with.</summary>
+    public string DownloadLink => Info.Url;
+
+    /// <summary>Where the file is saved (or will be).</summary>
+    public string FilePath => Info.FilePath;
+
     /// <summary>True when a browser handed over a direct link, so the original link and the download link differ.</summary>
     public bool HasDirectLink => Info.PageUrl is not null;
 
@@ -236,6 +242,8 @@ public sealed partial class DownloadItemViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSolving));
         OnPropertyChanged(nameof(OriginalLink));
         OnPropertyChanged(nameof(HasDirectLink));
+        OnPropertyChanged(nameof(DownloadLink));
+        OnPropertyChanged(nameof(FilePath));
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanPause));
         OnPropertyChanged(nameof(CanChangeLink));

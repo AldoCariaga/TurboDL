@@ -60,6 +60,56 @@
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
     </Style>
 
+    <!--
+        Text the user can select and copy (Details windows): a read-only text box that looks like the text styles above.
+        The template drops WPF UI's text box chrome; the -2 margin cancels the text box's own inset so it lines up with
+        the TextBlocks around it. Right-click gives Copy and Select all.
+    -->
+    <Style x:Key="SelectableText" TargetType="TextBox">
+        <Setter Property="FontFamily" Value="{StaticResource TextFont}" />
+        <Setter Property="FontSize" Value="{StaticResource BodySize}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="IsReadOnly" Value="True" />
+        <Setter Property="IsReadOnlyCaretVisible" Value="False" />
+        <Setter Property="IsUndoEnabled" Value="False" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="VerticalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <ScrollViewer x:Name="PART_ContentHost" Margin="-2,0" Focusable="False"
+                                  Background="{TemplateBinding Background}"
+                                  HorizontalScrollBarVisibility="{TemplateBinding HorizontalScrollBarVisibility}"
+                                  VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SelectableCaption" TargetType="TextBox" BasedOn="{StaticResource SelectableText}">
+        <Setter Property="FontSize" Value="{StaticResource CaptionSize}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+    </Style>
+
+    <Style x:Key="SelectableSubtitle" TargetType="TextBox" BasedOn="{StaticResource SelectableText}">
+        <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+        <Setter Property="FontSize" Value="{StaticResource SubtitleSize}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- An activity log: caption text with tabular numbers, scrolling on its own when it has the room to. -->
+    <Style x:Key="SelectableLogText" TargetType="TextBox" BasedOn="{StaticResource SelectableCaption}">
+        <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+    </Style>
+
     <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
         <Setter Property="Margin" Value="0,0,0,6" />
     </Style>

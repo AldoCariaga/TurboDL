@@ -28,9 +28,17 @@
 
         <!-- Header: what it is and how it's going. -->
         <StackPanel Grid.Row="1" Margin="24,0,24,16">
-            <TextBlock Text="{Binding Item.Name}" Style="{StaticResource SubtitleText}" ToolTip="{Binding Item.Name}" />
-            <TextBlock Text="{Binding Item.Info.Url}" Style="{StaticResource CaptionText}" Margin="0,4,0,0"
-                       ToolTip="{Binding Item.Info.Url}" />
+            <!-- Selectable, so the name, links, error and path can be copied. -->
+            <TextBox Text="{Binding Item.Name, Mode=OneWay}" Style="{StaticResource SelectableSubtitle}"
+                     AutomationProperties.Name="File name" />
+            <TextBox Text="{Binding Item.OriginalLink, Mode=OneWay}" Style="{StaticResource SelectableCaption}" Margin="0,4,0,0"
+                     AutomationProperties.Name="Link" />
+            <!-- A browser handed over a direct link: that one is what TurboDL downloads from. -->
+            <DockPanel Margin="0,2,0,0" Visibility="{Binding Item.HasDirectLink, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock DockPanel.Dock="Left" Text="Download link: " Style="{StaticResource CaptionText}" VerticalAlignment="Top" />
+                <TextBox Text="{Binding Item.DownloadLink, Mode=OneWay}" Style="{StaticResource SelectableCaption}"
+                         AutomationProperties.Name="Download link" />
+            </DockPanel>
 
             <Grid Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
@@ -59,13 +67,13 @@
                                Typography.NumeralAlignment="Tabular" />
                 </StackPanel>
             </Grid>
-            <TextBlock Text="{Binding Item.Error}" Style="{StaticResource BodyText}" TextWrapping="Wrap" Margin="0,12,0,0"
-                       Foreground="{DynamicResource SystemFillColorCriticalBrush}">
-                <TextBlock.Visibility>
+            <TextBox Text="{Binding Item.Error, Mode=OneWay}" Style="{StaticResource SelectableText}" Margin="0,12,0,0"
+                     Foreground="{DynamicResource SystemFillColorCriticalBrush}" AutomationProperties.Name="Error">
+                <TextBox.Visibility>
                     <Binding Path="Item.Status" Converter="{StaticResource EqualsToVisibility}"
                              ConverterParameter="{x:Static model:DownloadStatus.Failed}" />
-                </TextBlock.Visibility>
-            </TextBlock>
+                </TextBox.Visibility>
+            </TextBox>
         </StackPanel>
 
         <Border Grid.Row="2" Background="{DynamicResource LayerFillColorDefaultBrush}"
@@ -150,20 +158,15 @@
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
 
                     <TextBlock Text="Saved to" Style="{StaticResource BodyText}" FontWeight="SemiBold" Margin="0,16,0,4" />
-                    <TextBlock Text="{Binding Item.Info.FilePath}" Style="{StaticResource BodyText}" TextWrapping="Wrap"
-                               TextTrimming="None" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBox Text="{Binding Item.FilePath, Mode=OneWay}" Style="{StaticResource SelectableText}"
+                             Foreground="{DynamicResource TextFillColorSecondaryBrush}" AutomationProperties.Name="Saved to" />
 
                     <TextBlock Text="Activity" Style="{StaticResource BodyText}" FontWeight="SemiBold" Margin="0,16,0,4" />
                     <TextBlock Text="Retries and connection changes show up here." Style="{StaticResource CaptionText}"
                                Visibility="{Binding Item.Log.Count, Converter={StaticResource ZeroToVisible}}" />
-                    <ItemsControl ItemsSource="{Binding Item.Log}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" Style="{StaticResource CaptionText}" TextWrapping="Wrap"
-                                           TextTrimming="None" Margin="0,1" Typography.NumeralAlignment="Tabular" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <!-- One selectable block: drag across lines, Ctrl+A, Ctrl+C. The window's scroller scrolls it. -->
+                    <controls:SelectableLog Lines="{Binding Item.Log}" Style="{StaticResource SelectableLogText}"
+                                            VerticalScrollBarVisibility="Disabled" AutomationProperties.Name="Activity" />
                 </StackPanel>
             </ScrollViewer>
         </Border>

@@ -27,9 +27,11 @@
 
         <!-- Header: which batch, where, and how it's going. -->
         <StackPanel Grid.Row="1" Margin="24,0,24,16">
-            <TextBlock Text="{Binding Name}" Style="{StaticResource SubtitleText}" ToolTip="{Binding Name}" />
-            <TextBlock Text="{Binding Info.Directory}" Style="{StaticResource CaptionText}" Margin="0,4,0,0"
-                       ToolTip="{Binding Info.Directory}" />
+            <!-- Selectable, so the name, folder and status can be copied. -->
+            <TextBox Text="{Binding Name, Mode=OneWay}" Style="{StaticResource SelectableSubtitle}"
+                     AutomationProperties.Name="Batch name" />
+            <TextBox Text="{Binding Info.Directory, Mode=OneWay}" Style="{StaticResource SelectableCaption}" Margin="0,4,0,0"
+                     AutomationProperties.Name="Folder" />
 
             <Grid Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
@@ -38,8 +40,8 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Margin="0,0,16,0">
                     <TextBlock Text="Status" Style="{StaticResource CaptionText}" />
-                    <TextBlock Text="{Binding StatusText}" Style="{StaticResource BodyText}" Margin="0,2,0,0"
-                               TextWrapping="Wrap" TextTrimming="None" />
+                    <TextBox Text="{Binding StatusText, Mode=OneWay}" Style="{StaticResource SelectableText}" Margin="0,2,0,0"
+                             AutomationProperties.Name="Status" />
                 </StackPanel>
                 <StackPanel Grid.Column="1">
                     <TextBlock Text="Parts downloaded" Style="{StaticResource CaptionText}" />
@@ -70,16 +72,9 @@
                 <TextBlock DockPanel.Dock="Top" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,0,0,8"
                            Text="Extraction, retries and parts solved in the browser show up here while TurboDL runs."
                            Visibility="{Binding Log.Count, Converter={StaticResource ZeroToVisible}}" />
-                <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding Log}" AutomationProperties.Name="Batch activity">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" Style="{StaticResource CaptionText}" TextWrapping="Wrap"
-                                           TextTrimming="None" Margin="0,1" Typography.NumeralAlignment="Tabular" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <!-- One selectable block: drag across lines, Ctrl+A, Ctrl+C. Follows new lines unless scrolled up. -->
+                <controls:SelectableLog Lines="{Binding Log}" Style="{StaticResource SelectableLogText}"
+                                        AutomationProperties.Name="Batch activity" />
             </DockPanel>
         </Border>
 

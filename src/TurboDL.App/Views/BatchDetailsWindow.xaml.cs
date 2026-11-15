@@ -1,4 +1,3 @@
-using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -25,14 +24,8 @@ public partial class BatchDetailsWindow : FluentWindow
         InitializeComponent();
         Icon = AppIcon.Window;
 
-        batch.Log.CollectionChanged += OnLogChanged;
         batch.PropertyChanged += OnBatchChanged;
-        Closed += (_, _) =>
-        {
-            batch.Log.CollectionChanged -= OnLogChanged;
-            batch.PropertyChanged -= OnBatchChanged;
-        };
-        Loaded += (_, _) => LogScroll.ScrollToEnd();
+        Closed += (_, _) => batch.PropertyChanged -= OnBatchChanged;
         UpdateAddButton();
     }
 
@@ -48,12 +41,6 @@ public partial class BatchDetailsWindow : FluentWindow
     {
         _addPrompt.ShowForBatch(_batch, this);
         UpdateAddButton();
-    }
-
-    /// <summary>New lines keep the log at its end, unless the user has scrolled up to read.</summary>
-    private void OnLogChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        if (LogScroll.VerticalOffset >= LogScroll.ScrollableHeight - 24) LogScroll.ScrollToEnd();
     }
 
     /// <summary>Where the batch was last extracted to, else its download folder.</summary>
