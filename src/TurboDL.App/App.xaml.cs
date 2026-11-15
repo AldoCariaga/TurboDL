@@ -92,6 +92,7 @@ public partial class App : Application
         services.AddSingleton<WindowService>();
         services.AddSingleton<AddDownloadPrompt>();
         services.AddSingleton<AddBatchPrompt>();
+        services.AddSingleton<ChangeLinkPrompt>();
         services.AddSingleton<IpcServer>();
         services.AddTransient<AddDownloadViewModel>();
         services.AddTransient<AddBatchViewModel>();

@@ -259,6 +259,10 @@
                                              ToolTip="The direct link the browser found, which TurboDL downloads from"
                                              CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                              Visibility="{Binding PlacementTarget.SelectedItem.HasDirectLink, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
+                                <ui:MenuItem Header="Change link…" Command="{Binding ChangeLinkCommand}" Icon="{ui:SymbolIcon Edit24}"
+                                             ToolTip="Download it from another link (an expired one, a mirror)"
+                                             CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                             Visibility="{Binding PlacementTarget.SelectedItem.CanChangeLink, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
                                 <ui:MenuItem Header="Open in browser" Command="{Binding OpenInBrowserCommand}" Icon="{ui:SymbolIcon Globe24}"
                                              CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                                 <ui:MenuItem Header="Show browser" Command="{Binding ShowBrowserCommand}" Icon="{ui:SymbolIcon WindowNew24}"

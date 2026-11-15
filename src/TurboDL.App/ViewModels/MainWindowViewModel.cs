@@ -30,6 +30,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly CategoryRules _categories;
     private readonly AddDownloadPrompt _addPrompt;
     private readonly AddBatchPrompt _addBatch;
+    private readonly ChangeLinkPrompt _changeLink;
     private readonly BatchService _batches;
     private readonly IDeletePrompt _deletePrompt;
     private readonly SettingsService _settings;
@@ -39,13 +40,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private IReadOnlyList<DownloadItemViewModel> _selection = [];
 
     public MainWindowViewModel(DownloadManager manager, CategoryRules categories, AddDownloadPrompt addPrompt,
-        AddBatchPrompt addBatch, BatchService batches, IDeletePrompt deletePrompt, QueueService queue,
+        AddBatchPrompt addBatch, ChangeLinkPrompt changeLink, BatchService batches, IDeletePrompt deletePrompt, QueueService queue,
         SettingsService settings, WindowService windows, ClipboardWatcher clipboard)
     {
         _manager = manager;
         _categories = categories;
         _addPrompt = addPrompt;
         _addBatch = addBatch;
+        _changeLink = changeLink;
         _batches = batches;
         _deletePrompt = deletePrompt;
         _settings = settings;
@@ -288,6 +290,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private void CopyDownloadLink(DownloadItemViewModel? item)
     {
         if (item is not null) CopyText(item.Info.Url);
+    }
+
+    /// <summary>Points a stopped download at another link (an expired one, a mirror); it goes back in the queue.</summary>
+    [RelayCommand]
+    private void ChangeLink(DownloadItemViewModel? item)
+    {
+        if (item is not null) _changeLink.Show(item);
+        NotifyCommands();
     }
 
     private void CopyText(string text)

@@ -170,7 +170,7 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
             return ($"Two links would save as {twice.Key}. Remove one of them.", NoteKind.Error);
 
         if (_names.FirstOrDefault(n => _existing.Contains(n, StringComparer.OrdinalIgnoreCase)) is { } inBatch)
-            return ($"{inBatch} is already in this batch. Remove that link.", NoteKind.Error);
+            return ($"{inBatch} is already in this batch. Remove that link, or right-click the part and choose Change link.", NoteKind.Error);
 
         if (HasBadCharacters(Folder.Trim()))
             return ("The folder name has a character Windows doesn't allow (a line break, or one of < > : \" | ? *). " +

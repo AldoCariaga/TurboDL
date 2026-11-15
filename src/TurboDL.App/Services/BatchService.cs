@@ -62,6 +62,7 @@ public sealed class BatchService
         manager.Ended += OnEnded;
         manager.SourceReplaced += OnSourceReplaced;
         manager.BrowserDone += OnBrowserDone;
+        manager.LinkChanged += OnLinkChanged;
         manager.Items.CollectionChanged += OnItemsChanged;
     }
 
@@ -335,6 +336,25 @@ public sealed class BatchService
         }
         Save(batch);
         batch.Refresh(ItemsOf(batch));
+    }
+
+    /// <summary>
+    /// The user gave a part a new link: it gets a fresh set of automatic retries, and a batch that was stuck on it goes
+    /// back to downloading. It waits in the queue like the other parts.
+    /// </summary>
+    private void OnLinkChanged(DownloadItemViewModel item)
+    {
+        if (Find(item.Info.BatchId) is not { } batch) return;
+        batch.AddLog($"{PartName(item)}: link changed to {item.Info.Url}");
+        CancelRetry(item.Info.Id);
+        batch.Info.Retries.Remove(item.Info.Id);
+        if (batch.Info.Status == BatchStatus.NeedsAttention)
+        {
+            batch.Info.Status = BatchStatus.Downloading;
+            batch.Info.Message = null;
+        }
+        Save(batch);
+        Evaluate(batch);
     }
 
     /// <summary>

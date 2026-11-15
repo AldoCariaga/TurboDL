@@ -96,6 +96,9 @@ public sealed partial class DownloadItemViewModel : ObservableObject
     public bool CanResume => !IsBusy && Status is DownloadStatus.Paused or DownloadStatus.Failed or DownloadStatus.Queued;
     public bool CanPause => IsBusy;
 
+    /// <summary>A stopped plain download (queued, paused or failed) can be pointed at another link.</summary>
+    public bool CanChangeLink => !IsBusy && !IsVideo && Info.Status is DownloadStatus.Queued or DownloadStatus.Paused or DownloadStatus.Failed;
+
     internal void SetBrowser(BrowserStage stage)
     {
         Browser = stage;
@@ -235,6 +238,7 @@ public sealed partial class DownloadItemViewModel : ObservableObject
         OnPropertyChanged(nameof(HasDirectLink));
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanPause));
+        OnPropertyChanged(nameof(CanChangeLink));
         OnPropertyChanged(nameof(VideoDescription));
     }
 }

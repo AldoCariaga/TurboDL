@@ -11,9 +11,12 @@ public partial class DetailsWindow : FluentWindow
 {
     private readonly DetailsViewModel _vm;
 
-    public DetailsWindow(DetailsViewModel vm)
+    private readonly ChangeLinkPrompt _changeLink;
+
+    public DetailsWindow(DetailsViewModel vm, ChangeLinkPrompt changeLink)
     {
         _vm = vm;
+        _changeLink = changeLink;
         DataContext = vm;
         InitializeComponent();
         Icon = AppIcon.Window;
@@ -45,6 +48,8 @@ public partial class DetailsWindow : FluentWindow
             _ => "TextFillColorPrimaryBrush",
         });
     }
+
+    private void OnChangeLink(object sender, RoutedEventArgs e) => _changeLink.Show(_vm.Item, this);
 
     private void OnClose(object sender, RoutedEventArgs e) => Close();
 }

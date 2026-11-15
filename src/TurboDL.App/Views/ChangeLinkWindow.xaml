@@ -1,0 +1,49 @@
+<ui:FluentWindow x:Class="TurboDL.App.Views.ChangeLinkWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:vm="clr-namespace:TurboDL.App.ViewModels"
+                 mc:Ignorable="d"
+                 d:DataContext="{d:DesignInstance vm:ChangeLinkViewModel}"
+                 Title="Change link"
+                 Width="560" SizeToContent="Height" ResizeMode="NoResize"
+                 ShowInTaskbar="False"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowBackdropType="Mica"
+                 WindowCornerPreference="Round"
+                 FontFamily="{StaticResource TextFont}">
+
+    <StackPanel>
+        <ui:TitleBar Title="Change link" ShowMinimize="False" ShowMaximize="False" />
+
+        <StackPanel Margin="24,4,24,20">
+            <TextBlock Text="Current link" Style="{StaticResource FieldLabel}" />
+            <TextBlock Text="{Binding CurrentLink}" Style="{StaticResource CaptionText}" ToolTip="{Binding CurrentLink}"
+                       Margin="0,0,0,16" />
+
+            <TextBlock Text="New link" Style="{StaticResource FieldLabel}" />
+            <ui:TextBox x:Name="LinkBox" Text="{Binding Link, UpdateSourceTrigger=PropertyChanged}"
+                        PlaceholderText="https://…" AutomationProperties.Name="New link" />
+
+            <TextBlock Text="Save as" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+            <ui:TextBox Text="{Binding FileName, UpdateSourceTrigger=PropertyChanged}"
+                        PlaceholderText="Leave empty to use the server's name" AutomationProperties.Name="Save as" />
+
+            <!-- At least one line high so the form doesn't jump as the note changes. -->
+            <TextBlock x:Name="NoteText" Text="{Binding Note}" Style="{StaticResource CaptionText}" MinHeight="32"
+                       TextWrapping="Wrap" TextTrimming="None" VerticalAlignment="Top" Margin="0,8,0,0" />
+        </StackPanel>
+
+        <!-- Footer band, as in Windows 11 dialogs. -->
+        <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="24">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <ui:Button Appearance="Primary" Content="Save" Command="{Binding SaveCommand}" IsDefault="True" MinWidth="112"
+                           ToolTip="The download goes back in the queue with the new link" />
+                <ui:Button Content="Cancel" Command="{Binding CancelCommand}" IsCancel="True" Margin="8,0,0,0" MinWidth="88" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</ui:FluentWindow>

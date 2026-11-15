@@ -32,7 +32,8 @@ public sealed class WindowService(IServiceProvider services)
             return;
         }
         var manager = (DownloadManager)services.GetService(typeof(DownloadManager))!;
-        var window = new DetailsWindow(new DetailsViewModel(item, manager));
+        var window = new DetailsWindow(new DetailsViewModel(item, manager),
+            (ChangeLinkPrompt)services.GetService(typeof(ChangeLinkPrompt))!);
         PlaceNear(window);
         _details[item.Info.Id] = window;
         window.Closed += (_, _) => _details.Remove(item.Info.Id);

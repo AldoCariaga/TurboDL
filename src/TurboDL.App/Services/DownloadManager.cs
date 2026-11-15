@@ -95,6 +95,9 @@ public sealed class DownloadManager
     /// </summary>
     public event Action<DownloadItemViewModel>? BrowserDone;
 
+    /// <summary>Raised on the UI thread when the user points a stopped download at a new link; it's Queued again.</summary>
+    public event Action<DownloadItemViewModel>? LinkChanged;
+
     /// <summary>
     /// Loads the saved list. Anything still marked Downloading was running when the app last closed (or crashed),
     /// so it starts again.
@@ -390,6 +393,40 @@ public sealed class DownloadManager
         info.ETag = null;
         info.LastModified = null;
         return true;
+    }
+
+    /// <summary>A stopped plain download (queued, paused or failed) can be pointed at another link. Not a video, nor one that's running or in the browser.</summary>
+    public static bool CanChangeLink(DownloadItemViewModel item) => item.CanChangeLink;
+
+    /// <summary>
+    /// Points a stopped download at a new link (an expired link, a mirror) under <paramref name="fileName"/>, and puts it
+    /// back in the queue. What was downloaded from the old link is thrown away. A link a browser handed over is forgotten
+    /// together with that browser's session headers; the ones the download was added with stay.
+    /// </summary>
+    public void ChangeLink(DownloadItemViewModel item, Uri url, string fileName)
+    {
+        if (!CanChangeLink(item)) return;
+        var info = item.Info;
+        TryDelete(info.TempPath, recycle: false);
+        if (!ReturnToPage(info))
+        {
+            info.FinalUrl = null;
+            info.Segments = [];
+            info.TotalSize = null;
+            info.ETag = null;
+            info.LastModified = null;
+        }
+        info.Url = url.ToString();
+        info.FileName = fileName;
+        if (info.RequestedFileName is not null) info.RequestedFileName = fileName;
+        info.CompletedUtc = null;
+        info.Error = null;
+        info.ErrorIsTransient = false;
+        info.Status = DownloadStatus.Queued;
+        store.Save(info);
+        item.AddLog($"Link changed to {info.Url}");
+        item.Refresh();
+        LinkChanged?.Invoke(item);
     }
 
     /// <summary>Sends files to the Recycle Bin (missing ones are skipped). For a batch's parts after extracting.</summary>

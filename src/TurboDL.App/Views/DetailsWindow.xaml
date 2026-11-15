@@ -170,6 +170,9 @@
 
         <DockPanel Grid.Row="3" Margin="24,16" LastChildFill="False">
             <ui:Button DockPanel.Dock="Left" Command="{Binding OpenFolderCommand}" Content="Show in folder" />
+            <ui:Button DockPanel.Dock="Left" Content="Change link…" Click="OnChangeLink" Margin="8,0,0,0"
+                       ToolTip="Download it from another link (an expired one, a mirror)"
+                       Visibility="{Binding Item.CanChangeLink, Converter={StaticResource BoolToVisibility}}" />
             <ui:Button DockPanel.Dock="Right" Content="Close" IsCancel="True" Click="OnClose" Margin="8,0,0,0" MinWidth="88" />
             <ui:Button x:Name="PauseResume" DockPanel.Dock="Right" Appearance="Primary" Command="{Binding PauseOrResumeCommand}"
                        MinWidth="104" />
