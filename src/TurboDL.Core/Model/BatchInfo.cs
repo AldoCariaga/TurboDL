@@ -30,8 +30,26 @@ public sealed class BatchInfo
     /// <summary>Extract the archive sets once every part has downloaded.</summary>
     public bool AutoExtract { get; set; } = true;
 
-    /// <summary>Delete the archive parts after a successful extraction.</summary>
+    /// <summary>
+    /// Delete each archive set's parts permanently (not to the Recycle Bin, so the space is freed) as soon as that set
+    /// has extracted.
+    /// </summary>
     public bool DeleteParts { get; set; }
+
+    /// <summary>The folder the sets are extracted into; null = &lt;Directory&gt;\Extracted.</summary>
+    public string? ExtractTo { get; set; }
+
+    /// <summary>
+    /// The first volumes of the sets the current extraction has finished, so a run that was cut short (or failed on a
+    /// later set) doesn't extract them again: their parts may be deleted. Cleared once every set is extracted.
+    /// </summary>
+    public List<string> ExtractedSets { get; set; } = [];
+
+    /// <summary>
+    /// The first volume of the set being extracted; it stays set when that set is cut short or fails, so the next try
+    /// writes over its half-extracted files instead of putting renamed copies next to them.
+    /// </summary>
+    public string? ExtractingSet { get; set; }
 
     /// <summary>Where the batch is in its life.</summary>
     public BatchStatus Status { get; set; } = BatchStatus.Downloading;

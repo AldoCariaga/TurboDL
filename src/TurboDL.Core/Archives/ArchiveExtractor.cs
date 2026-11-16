@@ -26,10 +26,11 @@ public static partial class ArchiveExtractor
     /// <summary>
     /// x -y -aou -bso0 -bsp1 -p&lt;NoPassword&gt; -o&lt;out&gt; -- &lt;firstVolume&gt;. -aou renames an extracted file whose name is
     /// already taken (several sets go into one folder, so one can't overwrite another's file). Normal output off;
-    /// progress (-bsp1) on stdout, where <see cref="ExtractAsync"/> reads it.
+    /// progress (-bsp1) on stdout, where <see cref="ExtractAsync"/> reads it. <paramref name="overwrite"/> uses -aoa
+    /// instead, for extracting a set again over its own half-extracted files.
     /// </summary>
-    public static IReadOnlyList<string> BuildArguments(string firstVolume, string outputDirectory) =>
-        ["x", "-y", "-aou", "-bso0", "-bsp1", "-p" + NoPassword, "-o" + outputDirectory, "--", firstVolume];
+    public static IReadOnlyList<string> BuildArguments(string firstVolume, string outputDirectory, bool overwrite = false) =>
+        ["x", "-y", overwrite ? "-aoa" : "-aou", "-bso0", "-bsp1", "-p" + NoPassword, "-o" + outputDirectory, "--", firstVolume];
 
     [GeneratedRegex(@"^\s*(?<p>\d{1,3})%(?:\s+\d+)?(?:\s+[-+U]\s+(?<f>.+?))?\s*$")]
     private static partial Regex ProgressPiece();
@@ -57,7 +58,7 @@ public static partial class ArchiveExtractor
     /// <paramref name="progress"/> hears each new percentage (from a background thread).
     /// </summary>
     public static async Task<ExtractResult> ExtractAsync(string sevenZipPath, string firstVolume, string outputDirectory,
-        TimeSpan? timeout, CancellationToken ct, IProgress<ExtractProgress>? progress = null)
+        TimeSpan? timeout, CancellationToken ct, IProgress<ExtractProgress>? progress = null, bool overwrite = false)
     {
         Directory.CreateDirectory(outputDirectory);
         var last = -1;
@@ -67,7 +68,7 @@ public static partial class ArchiveExtractor
             last = p.Percent;
             progress.Report(p);
         }
-        var run = await ToolProcess.RunAsync(sevenZipPath, BuildArguments(firstVolume, outputDirectory), OnPiece, null, timeout, ct,
+        var run = await ToolProcess.RunAsync(sevenZipPath, BuildArguments(firstVolume, outputDirectory, overwrite), OnPiece, null, timeout, ct,
                 splitStdOutOnProgress: true)
             .ConfigureAwait(false);
 

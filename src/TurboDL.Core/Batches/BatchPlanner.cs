@@ -20,7 +20,7 @@ public abstract record BatchStep
     /// <summary>Retry a failed download after <paramref name="Delay"/>; <paramref name="Attempt"/> is 1-based.</summary>
     public sealed record Retry(long ItemId, int Attempt, TimeSpan Delay) : BatchStep;
 
-    /// <summary>Every part is in; extract these sets.</summary>
+    /// <summary>Every part is in; extract these sets (empty when an earlier run already extracted all of them).</summary>
     public sealed record Extract(IReadOnlyList<VolumeSet> Sets) : BatchStep;
 
     /// <summary>Every part is in and there's nothing to extract; the batch is done.</summary>
@@ -93,7 +93,9 @@ public static class BatchPlanner
                 : $"{MultipartArchive.Describe(s)}: parts {string.Join(", ", s.Missing)} are missing.")))];
         }
 
-        if (batch.AutoExtract && sets.Count > 0) return [new BatchStep.Extract(sets)];
+        // Sets an earlier run already extracted are left out (their parts may be gone); none left = just finish.
+        if (batch.AutoExtract && sets.Count > 0)
+            return [new BatchStep.Extract([.. sets.Where(s => !batch.ExtractedSets.Contains(s.FirstVolume ?? "", StringComparer.OrdinalIgnoreCase))])];
         return [new BatchStep.Finish(sets.Count == 0 ? "All files downloaded." : "All parts downloaded.")];
     }
 }

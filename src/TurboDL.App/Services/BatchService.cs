@@ -15,9 +15,9 @@ using TurboDL.Core.Video;
 
 namespace TurboDL.App.Services;
 
-/// <summary>What the Add batch dialog asks for.</summary>
+/// <summary>What the Add batch dialog asks for. <paramref name="ExtractTo"/> null = &lt;Folder&gt;\Extracted.</summary>
 public sealed record BatchRequest(IReadOnlyList<Uri> Urls, string Folder, IReadOnlyDictionary<string, string> Headers,
-    bool AutoExtract, bool DeleteParts, bool StartNow, int Connections);
+    bool AutoExtract, bool DeleteParts, bool StartNow, int Connections, string? ExtractTo = null);
 
 /// <summary>
 /// Runs batches: a group of links added together whose files are checked when they finish, retried a few times when the
@@ -84,7 +84,8 @@ public sealed class BatchService
             }
             Batches.Add(batch);
 
-            // An extraction cut short by closing the app starts over (into a fresh folder).
+            // An extraction cut short by closing the app carries on: the sets it finished are skipped, and the one it
+            // was on is extracted again over its half-written files, in the same folder.
             if (info.Status == BatchStatus.Extracting) info.Status = BatchStatus.Downloading;
             Evaluate(batch);
         }
@@ -102,6 +103,7 @@ public sealed class BatchService
             Directory = request.Folder,
             AutoExtract = request.AutoExtract,
             DeleteParts = request.DeleteParts,
+            ExtractTo = request.ExtractTo,
         };
         store.AddBatch(info);
         var batch = new BatchViewModel(info);
@@ -253,6 +255,58 @@ public sealed class BatchService
         batch.Info.Status = BatchStatus.Downloading;
         Evaluate(batch, forceExtract: true);
         Save(batch);
+    }
+
+    /// <summary>True while 7-Zip is being set up for the batch or is extracting it.</summary>
+    public bool IsExtracting(BatchViewModel batch) => _extracting.ContainsKey(batch.Info.Id);
+
+    /// <summary>The folder the batch extracts into: the one chosen, else &lt;its folder&gt;\Extracted.</summary>
+    public static string ExtractFolderOf(BatchInfo info) => info.ExtractTo ?? Path.Combine(info.Directory, "Extracted");
+
+    /// <summary>
+    /// Changes where the batch extracts (null = &lt;its folder&gt;\Extracted) and whether its parts are deleted afterwards.
+    /// Choosing a folder also turns extracting on. Refused (false) while the batch is extracting.
+    /// </summary>
+    public bool SetExtractOptions(BatchViewModel batch, string? extractTo, bool deleteParts)
+    {
+        if (!Batches.Contains(batch) || IsExtracting(batch)) return false;
+        var info = batch.Info;
+        extractTo = string.IsNullOrWhiteSpace(extractTo) ? null : Path.GetFullPath(extractTo.Trim());
+
+        if (!string.Equals(info.ExtractTo, extractTo, StringComparison.OrdinalIgnoreCase))
+        {
+            info.ExtractTo = extractTo;
+            batch.AddLog($"Extracts into {ExtractFolderOf(info)}" + (extractTo is null ? " (the default)." : "."));
+            if (info.ExtractedSets.Count > 0 && info.ExtractedTo.LastOrDefault() is { } earlier)
+                batch.AddLog($"The {info.ExtractedSets.Count} archive(s) already extracted stay in {earlier}.");
+        }
+        if (extractTo is not null && !info.AutoExtract)
+        {
+            info.AutoExtract = true;
+            batch.AddLog("Extracting is on: the archives extract once every part is in.");
+        }
+        if (info.DeleteParts != deleteParts)
+        {
+            info.DeleteParts = deleteParts;
+            batch.AddLog(deleteParts
+                ? "Parts are deleted permanently once their archive has extracted."
+                : "Parts are kept after extracting.");
+        }
+        Save(batch);
+        Refresh(batch);
+        return true;
+    }
+
+    /// <summary>
+    /// Extracts into <paramref name="folder"/>: now when every part is in, else as soon as they are (extracting is
+    /// turned on for the batch).
+    /// </summary>
+    public void ExtractTo(BatchViewModel batch, string folder)
+    {
+        if (!SetExtractOptions(batch, folder, batch.Info.DeleteParts)) return;
+        var pending = ItemsOf(batch).Any(i => i.IsBusy || i.Status is DownloadStatus.Queued or DownloadStatus.Downloading or DownloadStatus.Paused);
+        if (pending) batch.AddLog($"It extracts into {ExtractFolderOf(batch.Info)} once every part is in.");
+        else ExtractNow(batch);
     }
 
     /// <summary>Forgets the batch. Its downloads stay in the list as normal downloads.</summary>
@@ -530,7 +584,7 @@ public sealed class BatchService
 
         try
         {
-            if (!sevenZip.IsInstalled)
+            if (sets.Count > 0 && !sevenZip.IsInstalled)
             {
                 batch.AddLog($"Setting up 7-Zip ({SevenZipTools.SetupSizeText}, first time only).");
                 SetBusy(batch, $"Setting up 7-Zip ({SevenZipTools.SetupSizeText}, once)…");
@@ -551,14 +605,44 @@ public sealed class BatchService
 
             var dir = info.Directory;
             var all = Stopwatch.StartNew();
-            // One folder for the whole batch: every set goes into dir\Extracted (or "Extracted (2)" when that one is in
-            // use, such as after an extraction cut short by closing the app). 7-Zip renames a name that clashes (-aou).
-            var output = ArchiveExtractor.ChooseOutputDirectory(dir, "Extracted");
-            batch.AddLog(sets.Count == 1 ? $"Extracting into {output}" : $"Extracting {sets.Count} archives into {output}, one after another.");
+            var output = ChooseOutput(info);
+            if (!info.ExtractedTo.Contains(output, StringComparer.OrdinalIgnoreCase)) info.ExtractedTo.Add(output);
+            Save(batch);
+            if (info.ExtractedSets.Count > 0)
+                batch.AddLog($"Carrying on: {info.ExtractedSets.Count} archive(s) were already extracted.");
+            if (sets.Count > 0)
+                batch.AddLog(sets.Count == 1 ? $"Extracting into {output}" : $"Extracting {sets.Count} archives into {output}, one after another.");
             for (var index = 0; index < sets.Count; index++)
             {
                 var set = sets[index];
                 var label = MultipartArchive.Describe(set);
+                var paths = set.Files.Select(f => Path.Combine(dir, f)).ToList();
+
+                // Parts deleted after an earlier extraction (or moved away): 7-Zip can't open them.
+                if (paths.FirstOrDefault(p => !File.Exists(p)) is { } gone)
+                {
+                    var message = $"{label}: {Path.GetFileName(gone)} is no longer in the folder (deleted after an earlier extraction, " +
+                                  "or moved). Download it again to extract this archive.";
+                    batch.AddLog(message);
+                    NeedsAttention(batch, message);
+                    return;
+                }
+
+                // What the archive holds is at least about as big as its parts; less free space than that can't work.
+                var needed = paths.Sum(p => new FileInfo(p).Length);
+                if (FreeSpace(output) is { } free && free < needed)
+                {
+                    var message = $"Not enough space on {Path.GetPathRoot(output)} to extract {label}: about {Format.Bytes(needed)} needed, " +
+                                  $"{Format.Bytes(free)} free. Free some space, or use Extract to… to pick another drive.";
+                    batch.AddLog(message);
+                    NeedsAttention(batch, message);
+                    return;
+                }
+
+                // Extracting this set again after it was cut short or failed: write over its half-extracted files.
+                var again = string.Equals(info.ExtractingSet, set.FirstVolume, StringComparison.OrdinalIgnoreCase);
+                info.ExtractingSet = set.FirstVolume;
+                Save(batch);
                 // The percentage first: the sidebar is narrow, and the archive's name is the part that can be cut off.
                 var of = sets.Count > 1 ? $" · {index + 1} of {sets.Count}" : "";
                 batch.SetProgress(0);
@@ -578,7 +662,7 @@ public sealed class BatchService
                 try
                 {
                     result = await ArchiveExtractor.ExtractAsync(sevenZip.SevenZipPath, Path.Combine(dir, set.FirstVolume!),
-                        output, null, cts.Token, progress);
+                        output, null, cts.Token, progress, overwrite: again);
                 }
                 finally
                 {
@@ -595,18 +679,24 @@ public sealed class BatchService
                     ? $"{label}: done in {Took(watch.Elapsed)}."
                     : $"{label}: done in {Took(watch.Elapsed)}, with {result.Warnings.Count} warning(s) from 7-Zip: {result.Warnings[0]}");
 
-                if (!info.ExtractedTo.Contains(output, StringComparer.OrdinalIgnoreCase)) info.ExtractedTo.Add(output);
+                info.ExtractedSets.Add(set.FirstVolume!);
+                info.ExtractingSet = null;
                 Save(batch);
                 if (info.DeleteParts)
                 {
-                    manager.RecycleFiles(set.Files.Select(f => Path.Combine(dir, f)));
-                    batch.AddLog($"{label}: its {set.Files.Count} part(s) went to the Recycle Bin.");
+                    manager.DeleteFiles(paths);
+                    var left = paths.Count(File.Exists);
+                    batch.AddLog(left == 0
+                        ? $"{label}: its {paths.Count} part(s) were deleted, freeing {Format.Bytes(needed)}."
+                        : $"{label}: {paths.Count - left} of its {paths.Count} part(s) were deleted; {left} couldn't be (in use?).");
                 }
             }
 
             MoveLooseFiles(batch, dir, output);
 
             info.Status = BatchStatus.Extracted;
+            info.ExtractedSets.Clear();
+            info.ExtractingSet = null;
             info.Message = null;
             info.FinishedUtc = DateTime.UtcNow;
             Save(batch);
@@ -633,6 +723,33 @@ public sealed class BatchService
         }
     }
 
+    /// <summary>
+    /// One folder for the whole batch; 7-Zip renames a name that clashes (-aou). The folder the user chose, else
+    /// &lt;its folder&gt;\Extracted ("Extracted (2)" when that one is in use). A run carrying on after one cut short goes on
+    /// in the folder it was using.
+    /// </summary>
+    private static string ChooseOutput(BatchInfo info)
+    {
+        if (info.ExtractTo is { } chosen) return chosen;
+        if ((info.ExtractedSets.Count > 0 || info.ExtractingSet is not null) && info.ExtractedTo.LastOrDefault() is { } current)
+            return current;
+        return ArchiveExtractor.ChooseOutputDirectory(info.Directory, "Extracted");
+    }
+
+    /// <summary>Free bytes on the drive that holds <paramref name="folder"/>; null when Windows can't say (a network share).</summary>
+    private static long? FreeSpace(string folder)
+    {
+        try
+        {
+            var root = Path.GetPathRoot(Path.GetFullPath(folder));
+            return string.IsNullOrEmpty(root) ? null : new DriveInfo(root).AvailableFreeSpace;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     private void NeedsAttention(BatchViewModel batch, string message)
     {
         var info = batch.Info;
@@ -653,6 +770,9 @@ public sealed class BatchService
     /// </summary>
     private void MoveLooseFiles(BatchViewModel batch, string dir, string output)
     {
+        // Extracted into the batch's own folder: the loose files are already next to what the archives held.
+        if (string.Equals(Path.GetFullPath(dir).TrimEnd('\\'), Path.GetFullPath(output).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+            return;
         var moved = new List<string>();
         foreach (var item in ItemsOf(batch))
         {

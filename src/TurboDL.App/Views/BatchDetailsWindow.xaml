@@ -9,7 +9,7 @@
                  mc:Ignorable="d"
                  d:DataContext="{d:DesignInstance vm:BatchViewModel}"
                  Title="{Binding Name}"
-                 Width="760" Height="600" MinWidth="520" MinHeight="420"
+                 Width="760" Height="680" MinWidth="520" MinHeight="480"
                  ExtendsContentIntoTitleBar="True"
                  WindowBackdropType="Mica"
                  WindowCornerPreference="Round"
@@ -49,6 +49,29 @@
                                Typography.NumeralAlignment="Tabular" />
                 </StackPanel>
             </Grid>
+
+            <!-- Where it extracts and whether the parts go afterwards; changeable until extracting starts. -->
+            <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                    <TextBlock Text="Extract to" Style="{StaticResource CaptionText}" />
+                    <TextBox Text="{Binding ExtractToText, Mode=OneWay}" Style="{StaticResource SelectableText}" Margin="0,2,0,0"
+                             AutomationProperties.Name="Extract to" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
+                    <ui:Button x:Name="ChangeExtractTo" Content="Change…" Click="OnChangeExtractTo"
+                               ToolTip="Choose the folder the archives extract into (another drive works)" />
+                    <ui:Button x:Name="DefaultExtractTo" Content="Default" Click="OnDefaultExtractTo" Margin="8,0,0,0"
+                               ToolTip="Extract into a folder named Extracted next to the parts" />
+                </StackPanel>
+            </Grid>
+            <ui:ToggleSwitch x:Name="DeletePartsSwitch" IsChecked="{Binding DeleteParts, Mode=OneWay}" Margin="0,12,0,0"
+                             Click="OnDeletePartsClick"
+                             Content="Delete the parts after extracting (permanently, frees the space)"
+                             AutomationProperties.Name="Delete the parts permanently after extracting" />
 
             <!-- Extracting: 7-Zip's progress through the current archive; the status above says which one of how many. -->
             <Grid Margin="0,16,0,0" Visibility="{Binding HasProgress, Converter={StaticResource BoolToVisibility}}">

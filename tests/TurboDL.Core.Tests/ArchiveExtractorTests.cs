@@ -68,6 +68,14 @@ public sealed class ArchiveExtractorTests : IDisposable
             ArchiveExtractor.BuildArguments(firstVolume, output));
     }
 
+    [Fact]
+    public void BuildArguments_Overwrite_UsesAoaInsteadOfAou()
+    {
+        Assert.Equal(
+            ["x", "-y", "-aoa", "-bso0", "-bsp1", "-pturbodl-no-password", @"-oD:\out", "--", @"C:\dl\a.part01.rar"],
+            ArchiveExtractor.BuildArguments(@"C:\dl\a.part01.rar", @"D:\out", overwrite: true));
+    }
+
     [Theory]
     [InlineData("  0%", 0, null)]
     [InlineData(" 45%", 45, null)]

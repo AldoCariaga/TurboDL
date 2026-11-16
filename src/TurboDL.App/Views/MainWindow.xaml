@@ -38,6 +38,9 @@
                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             <ui:MenuItem Header="Extract now" Command="{Binding ExtractBatchCommand}" Icon="{ui:SymbolIcon FolderZip24}"
                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <ui:MenuItem Header="Extract to…" Command="{Binding ExtractBatchToCommand}" Icon="{ui:SymbolIcon FolderArrowRight24}"
+                         ToolTip="Choose where the archives extract (another drive works): now if every part is in, else when they are"
+                         CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             <ui:MenuItem Header="Open folder" Command="{Binding OpenBatchFolderCommand}" Icon="{ui:SymbolIcon FolderOpen24}"
                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             <Separator />

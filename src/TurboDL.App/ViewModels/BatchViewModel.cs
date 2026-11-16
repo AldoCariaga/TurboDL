@@ -41,6 +41,12 @@ public sealed partial class BatchViewModel(BatchInfo info) : ObservableObject
     /// <summary>True while 7-Zip is being set up or is extracting.</summary>
     [ObservableProperty] public partial bool IsBusy { get; private set; }
 
+    /// <summary>Where the batch extracts, for the details window: the folder chosen, or the default one.</summary>
+    [ObservableProperty] public partial string ExtractToText { get; private set; } = "";
+
+    /// <summary>Whether the parts are deleted permanently once their archive has extracted.</summary>
+    [ObservableProperty] public partial bool DeleteParts { get; private set; }
+
     /// <summary>Recounts the parts and rewrites the status line. <paramref name="busyText"/> replaces "Extracting…" while extracting.</summary>
     public void Refresh(IReadOnlyList<DownloadItemViewModel> items, string? busyText = null)
     {
@@ -50,6 +56,8 @@ public sealed partial class BatchViewModel(BatchInfo info) : ObservableObject
         Failed = items.Count(i => i.Status == DownloadStatus.Failed);
         IsBusy = Info.Status == BatchStatus.Extracting;
         if (!IsBusy) Progress = null;
+        ExtractToText = Info.ExtractTo ?? System.IO.Path.Combine(Info.Directory, "Extracted") + "  (default)";
+        DeleteParts = Info.DeleteParts;
         OnPropertyChanged(nameof(PartsText));
         StatusText = Info.Status switch
         {

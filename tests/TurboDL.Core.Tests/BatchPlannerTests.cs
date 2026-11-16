@@ -221,6 +221,27 @@ public sealed class BatchPlannerTests
         Assert.Equal(["a.part01.rar", "b.7z.001"], extract.Sets.Select(s => s.FirstVolume));
     }
 
+    [Fact]
+    public void SetAlreadyExtracted_IsLeftOut()
+    {
+        List<BatchItemState> items = [.. RarSet("a", 2), Done(10, "b.7z.001"), Done(11, "b.7z.002")];
+        var batch = Batch();
+        batch.ExtractedSets.Add("A.PART01.RAR"); // any case
+
+        var extract = Assert.IsType<BatchStep.Extract>(Assert.Single(BatchPlanner.Decide(batch, items)));
+        Assert.Equal(["b.7z.001"], extract.Sets.Select(s => s.FirstVolume));
+    }
+
+    [Fact]
+    public void EverySetAlreadyExtracted_ExtractsNothingButStillExtracts()
+    {
+        var batch = Batch();
+        batch.ExtractedSets.Add("data.part01.rar");
+
+        var extract = Assert.IsType<BatchStep.Extract>(Assert.Single(BatchPlanner.Decide(batch, RarSet("data", 3))));
+        Assert.Empty(extract.Sets);
+    }
+
     private static readonly DateTime Now = new(2026, 11, 8, 14, 5, 0);
 
     [Fact]

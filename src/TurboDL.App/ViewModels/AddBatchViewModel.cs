@@ -43,6 +43,14 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
     [ObservableProperty] public partial string UserAgent { get; set; } = "";
     [ObservableProperty] public partial bool AutoExtract { get; set; } = true;
     [ObservableProperty] public partial bool DeleteParts { get; set; }
+
+    /// <summary>Where to extract; empty = &lt;Folder&gt;\Extracted.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StartNowCommand), nameof(AddToQueueCommand))]
+    public partial string ExtractTo { get; set; } = "";
+
+    /// <summary>What an empty Extract to means: "&lt;Save to&gt;\Extracted".</summary>
+    [ObservableProperty] public partial string ExtractToPlaceholder { get; private set; } = "";
     [ObservableProperty] public partial double? Connections { get; set; } = 8;
 
     /// <summary>What the pasted text holds: how many links, which archive sets, and what's already in the list.</summary>
@@ -104,13 +112,24 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
     partial void OnAutoExtractChanged(bool value)
     {
         if (!value) DeleteParts = false;
+        Update();
     }
+
+    partial void OnExtractToChanged(string value) => Update();
 
     [RelayCommand]
     private void Browse()
     {
         var dialog = new OpenFolderDialog { Title = "Choose where to save", InitialDirectory = ExistingParent(Folder) };
         if (dialog.ShowDialog() == true) Folder = dialog.FolderName;
+    }
+
+    [RelayCommand]
+    private void BrowseExtractTo()
+    {
+        var start = ExistingParent(ExtractTo.Trim().Length > 0 ? ExtractTo.Trim() : Folder.Trim());
+        var dialog = new OpenFolderDialog { Title = "Choose where to extract", InitialDirectory = start };
+        if (dialog.ShowDialog() == true) ExtractTo = dialog.FolderName;
     }
 
     [RelayCommand(CanExecute = nameof(CanAdd))]
@@ -123,7 +142,8 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
     private void Cancel() => CloseRequested?.Invoke();
 
     private bool CanAdd() =>
-        _links.Count > 0 && Folder.Trim().Length > 0 && Path.IsPathFullyQualified(Folder.Trim()) && !_blocked;
+        _links.Count > 0 && Folder.Trim().Length > 0 && Path.IsPathFullyQualified(Folder.Trim()) && !_blocked
+        && (!AutoExtract || ExtractTo.Trim().Length == 0 || Path.IsPathFullyQualified(ExtractTo.Trim()));
 
     private void Accept(bool start)
     {
@@ -135,8 +155,9 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
         if (Referer.Trim() is { Length: > 0 } referer) headers["Referer"] = referer;
         if (UserAgent.Trim() is { Length: > 0 } userAgent) headers["User-Agent"] = userAgent;
 
+        var extractTo = AutoExtract && ExtractTo.Trim() is { Length: > 0 } chosen ? chosen : null;
         Result = new BatchRequest(_links, Folder.Trim(), headers, AutoExtract, DeleteParts, start,
-            (int)Math.Clamp(Connections ?? 8, 1, 32));
+            (int)Math.Clamp(Connections ?? 8, 1, 32), extractTo);
         CloseRequested?.Invoke();
     }
 
@@ -150,6 +171,10 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
             var folder = Path.Combine(rules.FolderFor(Compressed), FileNames.Sanitize(BatchPlanner.SuggestName(_names, DateTime.Now)));
             SetQuietly(() => Folder = folder);
         }
+
+        ExtractToPlaceholder = Folder.Trim() is { Length: > 0 } saveTo
+            ? $"{Path.Combine(saveTo, "Extracted")} (default)"
+            : "A folder named Extracted next to the parts (default)";
 
         var (summary, kind) = Describe(sets);
         _blocked = kind == NoteKind.Error;
@@ -175,6 +200,13 @@ public sealed partial class AddBatchViewModel(DownloadManager manager, CategoryR
         if (HasBadCharacters(Folder.Trim()))
             return ("The folder name has a character Windows doesn't allow (a line break, or one of < > : \" | ? *). " +
                     "Choose another folder.", NoteKind.Error);
+
+        if (AutoExtract && HasBadCharacters(ExtractTo.Trim()))
+            return ("The Extract to folder has a character Windows doesn't allow (a line break, or one of < > : \" | ? *). " +
+                    "Choose another folder.", NoteKind.Error);
+
+        if (AutoExtract && ExtractTo.Trim() is { Length: > 0 } extractTo && !Path.IsPathFullyQualified(extractTo))
+            return ("Extract to needs a full path, such as D:\\Extracted.", NoteKind.Error);
 
         if (FolderHoldsAny())
             return ("Some of these files are already in this folder. TurboDL would rename the new copies, and the archive " +

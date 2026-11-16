@@ -166,6 +166,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
         if (BatchOf(filter) is { } batch) _batches.ExtractNow(batch);
     }
 
+    /// <summary>Asks where to extract, then extracts there: now if every part is in, else once they are.</summary>
+    [RelayCommand(CanExecute = nameof(CanExtractBatchTo))]
+    private void ExtractBatchTo(SidebarFilter? filter)
+    {
+        if (BatchOf(filter) is not { } batch) return;
+        var start = batch.Info.ExtractTo ?? batch.Info.Directory;
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = $"Extract {batch.Name} to",
+            InitialDirectory = Directory.Exists(start) ? start : null,
+        };
+        if (dialog.ShowDialog(Application.Current.MainWindow) == true) _batches.ExtractTo(batch, dialog.FolderName);
+    }
+
+    private bool CanExtractBatchTo(SidebarFilter? filter) => BatchOf(filter) is { } batch && !_batches.IsExtracting(batch);
+
     /// <summary>Opens where the batch was last extracted to, else its download folder.</summary>
     [RelayCommand]
     private void OpenBatchFolder(SidebarFilter? filter)
@@ -368,6 +384,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         DeleteCommand.NotifyCanExecuteChanged();
         ToggleQueueCommand.NotifyCanExecuteChanged();
         AddToBatchCommand.NotifyCanExecuteChanged();
+        ExtractBatchToCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>Category entries follow the rules in Settings; the status views above them never change.</summary>

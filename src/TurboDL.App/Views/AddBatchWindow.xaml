@@ -59,8 +59,19 @@
                              Content="Extract when all parts have downloaded"
                              AutomationProperties.Name="Extract when all parts have downloaded" />
             <ui:ToggleSwitch IsChecked="{Binding DeleteParts}" IsEnabled="{Binding AutoExtract}" Margin="0,8,0,0"
-                             Content="Delete the parts after extracting (to the Recycle Bin)"
-                             AutomationProperties.Name="Delete the parts after extracting" />
+                             Content="Delete the parts after extracting (permanently, frees the space)"
+                             AutomationProperties.Name="Delete the parts permanently after extracting" />
+            <TextBlock Text="Extract to" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+            <Grid IsEnabled="{Binding AutoExtract}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ui:TextBox Text="{Binding ExtractTo, UpdateSourceTrigger=PropertyChanged}"
+                            PlaceholderText="{Binding ExtractToPlaceholder}" AutomationProperties.Name="Extract to" />
+                <ui:Button Grid.Column="1" Margin="8,0,0,0" Command="{Binding BrowseExtractToCommand}" Content="Browse"
+                           VerticalAlignment="Stretch" />
+            </Grid>
             </StackPanel>
 
             <Expander Header="Sign-in for file hosts (optional)" Margin="0,16,0,0">

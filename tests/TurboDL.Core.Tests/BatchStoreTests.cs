@@ -60,6 +60,40 @@ public sealed class BatchStoreTests : IDisposable
     }
 
     [Fact]
+    public void ExtractOptions_RoundTrip_AndAnOldRowLoadsWithDefaults()
+    {
+        using (var store = new DownloadStore(DbPath))
+        {
+            var batch = new BatchInfo { Name = "x", Directory = @"C:\dl\x", ExtractTo = @"D:\Out ✓", ExtractingSet = "b.7z.001" };
+            batch.ExtractedSets.Add("a.part01.rar");
+            store.AddBatch(batch);
+        }
+
+        // A row written by 1.0.0, before these fields existed.
+        using (var conn = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = DbPath, Pooling = false }.ToString()))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """INSERT INTO batches (data) VALUES ('{"Name":"old","Directory":"C:\\dl\\old","DeleteParts":true}')""";
+            cmd.ExecuteNonQuery();
+        }
+
+        using (var store = new DownloadStore(DbPath))
+        {
+            var loaded = store.LoadBatches();
+            Assert.Equal(@"D:\Out ✓", loaded[0].ExtractTo);
+            Assert.Equal(["a.part01.rar"], loaded[0].ExtractedSets);
+            Assert.Equal("b.7z.001", loaded[0].ExtractingSet);
+
+            Assert.Equal("old", loaded[1].Name);
+            Assert.Null(loaded[1].ExtractTo);
+            Assert.Empty(loaded[1].ExtractedSets);
+            Assert.Null(loaded[1].ExtractingSet);
+            Assert.True(loaded[1].DeleteParts);
+        }
+    }
+
+    [Fact]
     public void Delete_RemovesOnlyThatBatch()
     {
         using var store = new DownloadStore(DbPath);

@@ -429,10 +429,13 @@ public sealed class DownloadManager
         LinkChanged?.Invoke(item);
     }
 
-    /// <summary>Sends files to the Recycle Bin (missing ones are skipped). For a batch's parts after extracting.</summary>
-    public void RecycleFiles(IEnumerable<string> paths)
+    /// <summary>
+    /// Deletes files permanently, not to the Recycle Bin, so the space is freed (missing ones are skipped). For a
+    /// batch's parts after extracting.
+    /// </summary>
+    public void DeleteFiles(IEnumerable<string> paths)
     {
-        foreach (var path in paths) TryDelete(path, recycle: true);
+        foreach (var path in paths) TryDelete(path, recycle: false);
     }
 
     /// <summary>This download's own cap in bytes/second (0 = none). Applies at once if it is running.</summary>
