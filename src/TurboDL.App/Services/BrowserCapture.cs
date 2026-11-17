@@ -25,10 +25,10 @@ public sealed record CapturedSession(string Url, string UserAgent, string Refere
 /// page that stops moving on, the user picking it on the taskbar, or <see cref="BrowserView.ShowAsync"/> (the row's Show
 /// browser). As soon as the host sends the file (a browser download, or any response marked as an attachment), the link,
 /// cookies, user agent and referring page are taken and the browser is closed; TurboDL then downloads the file itself.
-/// Each capture is its own browser, so several can run at once (the caller decides how many). Playwright's driver comes
-/// from <see cref="PlaywrightTools"/>.
+/// Each capture is its own browser, so several can run at once (the caller decides how many). The host's icon is taken
+/// from its page for <see cref="SiteIcons"/>. Playwright's driver comes from <see cref="PlaywrightTools"/>.
 /// </summary>
-public sealed class BrowserCapture(PlaywrightTools tools)
+public sealed class BrowserCapture(PlaywrightTools tools, SiteIcons icons)
 {
     /// <summary>How long a pop-up gets to turn out to be the file, or the host's own page, before it's closed as an ad.</summary>
     private static readonly TimeSpan PopupGrace = TimeSpan.FromSeconds(3);
@@ -110,6 +110,15 @@ public sealed class BrowserCapture(PlaywrightTools tools)
         // Picking the hidden browser on the taskbar (or with Alt+Tab) brings it on screen; nothing else does by itself.
         if (!visible && await BrowserProcessIdAsync(browser) is { } browserPid)
             _ = windows.ShowWhenPickedAsync(browserPid, done.Task);
+        if (!icons.Has(url))
+        {
+            var iconTried = 0;
+            first.DOMContentLoaded += (_, page) =>
+            {
+                if (SiteIcons.Key(page.Url) == SiteIcons.Key(url) && Interlocked.Exchange(ref iconTried, 1) == 0)
+                    _ = FetchIconAsync(page, url);
+            };
+        }
         var userAgent = await first.EvaluateAsync<string>("() => navigator.userAgent");
         // Not awaited: a host page can keep loading forever, and the user may navigate away before it finishes.
         _ = first.GotoAsync(url).ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
@@ -169,6 +178,47 @@ public sealed class BrowserCapture(PlaywrightTools tools)
     {
         "script", "stylesheet", "image", "font", "media", "texttrack", "manifest", "ping", "eventsource", "websocket",
     };
+
+    /// <summary>
+    /// The icons a page names (PNG/ICO first, nearest 32 px; never SVG, which WPF can't show), then /favicon.ico.
+    /// </summary>
+    private const string IconScript = """
+        () => {
+          const size = l => parseInt(((l.sizes && l.sizes.value) || '').split(/x/i)[0], 10) || 16;
+          const links = [...document.querySelectorAll('link[rel~="icon" i], link[rel~="apple-touch-icon" i]')]
+            .filter(l => l.href && /^https?:/i.test(l.href) && !/svg/i.test(l.type || '') && !/\.svg(\?|#|$)/i.test(l.href))
+            .sort((a, b) => Math.abs(size(a) - 32) - Math.abs(size(b) - 32));
+          const all = [...links.map(l => l.href), new URL('/favicon.ico', location.href).href];
+          return [...new Set(all)].slice(0, 5);
+        }
+        """;
+
+    /// <summary>Takes the host's icon from its page (with the page's cookies), the first one WPF can show. Never throws.</summary>
+    private async Task FetchIconAsync(IPage page, string linkUrl)
+    {
+        try
+        {
+            var candidates = await page.EvaluateAsync<string[]>(IconScript);
+            foreach (var href in candidates)
+            {
+                var response = await page.Context.APIRequest.GetAsync(href, new() { Timeout = 10_000, MaxRedirects = 3 });
+                try
+                {
+                    if (!response.Ok) continue;
+                    var body = await response.BodyAsync();
+                    if (icons.Store(linkUrl, body) is not null) return;
+                }
+                finally
+                {
+                    await response.DisposeAsync();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is PlaywrightException or TimeoutException or ObjectDisposedException)
+        {
+            // The page moved on or the browser closed: the next download from this host tries again.
+        }
+    }
 
     /// <summary>The browser's own process (every window of it belongs to that process); null when Chrome won't say.</summary>
     private static async Task<int?> BrowserProcessIdAsync(IBrowser browser)

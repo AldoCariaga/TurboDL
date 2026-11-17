@@ -71,6 +71,14 @@ public sealed partial class DownloadItemViewModel : ObservableObject
     /// <summary>The browser solving this download's page (Show browser); null outside it.</summary>
     internal BrowserView? BrowserView { get; set; }
 
+    /// <summary>The file host's own icon, shown beside "Solving"; null until a browser has found one for the host.</summary>
+    [ObservableProperty] public partial ImageSource? SiteIcon { get; internal set; }
+
+    /// <summary>The host's icon is shown: the page is being solved and the host has one.</summary>
+    public bool ShowSiteIcon => IsSolving && SiteIcon is not null;
+
+    partial void OnSiteIconChanged(ImageSource? value) => OnPropertyChanged(nameof(ShowSiteIcon));
+
     /// <summary>Cancels the browser step (Pause); null outside it.</summary>
     internal CancellationTokenSource? BrowserCts { get; set; }
 
@@ -243,6 +251,7 @@ public sealed partial class DownloadItemViewModel : ObservableObject
         OnPropertyChanged(nameof(IsRunning));
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(IsSolving));
+        OnPropertyChanged(nameof(ShowSiteIcon));
         OnPropertyChanged(nameof(OriginalLink));
         OnPropertyChanged(nameof(HasDirectLink));
         OnPropertyChanged(nameof(DownloadLink));

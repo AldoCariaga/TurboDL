@@ -314,9 +314,15 @@
 
                                     <TextBlock Grid.Column="4" Text="{Binding SpeedText}" Style="{StaticResource NumberText}" />
                                     <TextBlock Grid.Column="5" Text="{Binding RemainingText}" Style="{StaticResource NumberText}" />
-                                    <TextBlock x:Name="StatusLabel" Grid.Column="6" Margin="20,0,0,0" Text="{Binding StatusText}"
-                                               Style="{StaticResource BodyText}"
-                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    <DockPanel Grid.Column="6" Margin="20,0,0,0" LastChildFill="True">
+                                        <!-- The file host's own icon while its page is solved. -->
+                                        <Image DockPanel.Dock="Left" Source="{Binding SiteIcon}" Width="14" Height="14" Margin="0,0,6,0"
+                                               VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"
+                                               Visibility="{Binding ShowSiteIcon, Converter={StaticResource BoolToVisibility}}" />
+                                        <TextBlock x:Name="StatusLabel" Text="{Binding StatusText}"
+                                                   Style="{StaticResource BodyText}"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    </DockPanel>
                                 </Grid>
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static model:DownloadStatus.Downloading}">

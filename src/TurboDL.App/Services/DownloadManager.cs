@@ -46,6 +46,8 @@ public sealed class DownloadManager
     /// </summary>
     private readonly SolvingGate _browserGate;
 
+    private readonly SiteIcons siteIcons;
+
     /// <summary>Numbers each wait for the browser, in order.</summary>
     private long _browserTickets;
 
@@ -57,10 +59,16 @@ public sealed class DownloadManager
 
     public DownloadManager(HttpClient http, RateLimiter globalLimiter, DownloadStore store, IUserPrompts prompts,
         VideoToolsService videoTools, BrowserCapture browser, SiteConfigService sites, SettingsService settings,
-        ILogger<DownloadManager> log)
+        SiteIcons siteIcons, ILogger<DownloadManager> log)
     {
+        this.siteIcons = siteIcons;
         _browserGate = new SolvingGate(settings.Current.MaxSolving);
         settings.Changed += s => _browserGate.Limit = s.MaxSolving;
+        // A host's icon found by one browser shows on every row of that host being solved, or waiting to be.
+        siteIcons.Added += (key, icon) => _ui.BeginInvoke(() =>
+        {
+            foreach (var row in Items.Where(i => i.InBrowser && SiteIcons.Key(i.OriginalLink) == key)) row.SiteIcon = icon;
+        });
         this.sites = sites;
         this.http = http;
         this.globalLimiter = globalLimiter;
@@ -237,6 +245,7 @@ public sealed class DownloadManager
         if (item.IsVideo || item.IsRunning || item.InBrowser) return false;
         item.BrowserTicket = ++_browserTickets;
         item.BrowserCts = new CancellationTokenSource();
+        item.SiteIcon = siteIcons.Get(item.OriginalLink);
         item.SetBrowser(BrowserStage.Waiting);
         return true;
     }
