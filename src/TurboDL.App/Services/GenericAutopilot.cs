@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Playwright;
 
 namespace TurboDL.App.Services;
@@ -94,21 +95,138 @@ internal static class GenericAutopilot
 }
 
 /// <summary>
-/// The browser's windows: kept off-screen while hidden, brought on screen (once) when the user is needed. It's a normal
-/// window either way, only placed out of sight, so pages behave as they would on screen.
+/// The browser's windows: kept off-screen while hidden, brought on screen (once) when the user is needed or picks the
+/// browser on the taskbar. It's a normal window either way, only placed out of sight, so pages behave as they would on
+/// screen.
 /// </summary>
-internal sealed class BrowserWindows(IBrowserContext context, StatusReporter report, bool shown)
+internal sealed partial class BrowserWindows(IBrowserContext context, StatusReporter report, bool shown)
 {
     /// <summary>Where a hidden window sits: far outside every screen, so it never shows or takes the focus.</summary>
     public const int OffScreen = -32000;
 
+    /// <summary>How often <see cref="ShowWhenPickedAsync"/> looks at which window is in front.</summary>
+    private static readonly TimeSpan PickPoll = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>A window this new in front was opened by the page (a pop-up), not picked by the user.</summary>
+    private static readonly TimeSpan NewWindowGrace = TimeSpan.FromSeconds(2);
+
     private int _shown = shown ? 1 : 0;
+    private long _lastNewPageTicks = Environment.TickCount64;
 
     public bool Shown => Volatile.Read(ref _shown) == 1;
+
+    /// <summary>
+    /// Brings the hidden browser on screen when the user brings it to the front themselves: its taskbar button, Alt+Tab.
+    /// Only a change counts (another window was in front, now one of the browser's is), so the browser being in front
+    /// when it starts, or a pop-up the page just opened, doesn't. Ends when the browser is shown or the capture ends.
+    /// </summary>
+    public async Task ShowWhenPickedAsync(int browserProcessId, Task finished)
+    {
+        try
+        {
+            var wasInFront = InFront(browserProcessId);
+            while (!finished.IsCompleted && !Shown)
+            {
+                await Task.WhenAny(finished, Task.Delay(PickPoll));
+                var inFront = InFront(browserProcessId);
+                var popup = Environment.TickCount64 - Volatile.Read(ref _lastNewPageTicks) < NewWindowGrace.TotalMilliseconds;
+                if (inFront && !wasInFront && !popup && !finished.IsCompleted
+                    && context.Pages.LastOrDefault(p => !p.IsClosed) is { } page)
+                {
+                    await ShowAllAsync("You picked the browser on the taskbar: it's on screen now.");
+                    if (!page.IsClosed) await page.BringToFrontAsync();
+                    return;
+                }
+                wasInFront = inFront;
+            }
+        }
+        catch (Exception ex) when (ex is PlaywrightException or ObjectDisposedException)
+        {
+            // The browser is closing.
+        }
+    }
+
+    private static bool InFront(int processId)
+    {
+        var window = GetForegroundWindow();
+        return window != 0 && GetWindowThreadProcessId(window, out var owner) != 0 && owner == processId;
+    }
+
+    /// <summary>The last window in front that wasn't a hidden browser: where the focus goes back to.</summary>
+    private static nint _userWindow;
+
+    /// <summary>
+    /// The window the user is in, taken before a hidden browser starts: the one in front, or, when that's another
+    /// hidden browser (several start at once), the one in front before it.
+    /// </summary>
+    public static nint UserWindow()
+    {
+        var window = GetForegroundWindow();
+        if (window == 0 || IsOffScreen(window)) return Volatile.Read(ref _userWindow);
+        Volatile.Write(ref _userWindow, window);
+        return window;
+    }
+
+    /// <summary>
+    /// A starting Chrome takes the focus for its own (hidden) window, so typing would go nowhere: when a hidden window
+    /// is in front, the focus goes back to <paramref name="userWindow"/>. Windows only lets the window in front hand
+    /// the focus on, so this joins its input queue for the moment it takes.
+    /// </summary>
+    public static void GiveFocusBack(nint userWindow)
+    {
+        var front = GetForegroundWindow();
+        if (userWindow == 0 || front == 0 || front == userWindow || !IsOffScreen(front) || !IsWindow(userWindow)) return;
+        var frontThread = GetWindowThreadProcessId(front, out _);
+        var thisThread = GetCurrentThreadId();
+        var joined = frontThread != thisThread && AttachThreadInput(thisThread, frontThread, true);
+        try
+        {
+            SetForegroundWindow(userWindow);
+        }
+        finally
+        {
+            if (joined) AttachThreadInput(thisThread, frontThread, false);
+        }
+    }
+
+    /// <summary>A window placed far outside every screen: a hidden browser (minimized windows sit there too).</summary>
+    private static bool IsOffScreen(nint window) => GetWindowRect(window, out var rect) && rect.Right <= OffScreen + 10_000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
+    [LibraryImport("user32.dll")]
+    private static partial nint GetForegroundWindow();
+
+    [LibraryImport("user32.dll")]
+    private static partial uint GetWindowThreadProcessId(nint window, out int processId);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetWindowRect(nint window, out Rect rect);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsWindow(nint window);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetForegroundWindow(nint window);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool AttachThreadInput(uint attach, uint attachTo, [MarshalAs(UnmanagedType.Bool)] bool join);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial uint GetCurrentThreadId();
 
     /// <summary>Moves the page's window off-screen while the browser is hidden.</summary>
     public async Task KeepHiddenAsync(IPage page)
     {
+        Volatile.Write(ref _lastNewPageTicks, Environment.TickCount64);
         if (Shown) return;
         try
         {

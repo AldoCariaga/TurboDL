@@ -22,10 +22,10 @@ public sealed record CapturedSession(string Url, string UserAgent, string Refere
 /// steps (<see cref="SiteStepRunner"/>); any other gets the general autopilot (<see cref="GenericAutopilot"/>), which
 /// waits out countdowns and clicks the download button it finds by its text. Ad pop-ups are closed, and CAPTCHAs and
 /// sign-ins are left to the user. The window starts off-screen and comes on screen only when the user is needed: a CAPTCHA, a
-/// page that stops moving on, or <see cref="ShowAsync"/> (the row's Show browser). As soon as the host sends the file (a
-/// browser download, or any response marked as an attachment), the link, cookies, user agent and referring page are
-/// taken and the browser is closed; TurboDL then downloads the file itself. One browser at a time (the caller sees to
-/// it). Playwright's driver comes from <see cref="PlaywrightTools"/>.
+/// page that stops moving on, the user picking it on the taskbar, or <see cref="ShowAsync"/> (the row's Show browser). As
+/// soon as the host sends the file (a browser download, or any response marked as an attachment), the link, cookies, user
+/// agent and referring page are taken and the browser is closed; TurboDL then downloads the file itself. One browser at a
+/// time (the caller sees to it). Playwright's driver comes from <see cref="PlaywrightTools"/>.
 /// </summary>
 public sealed class BrowserCapture(PlaywrightTools tools)
 {
@@ -64,6 +64,7 @@ public sealed class BrowserCapture(PlaywrightTools tools)
 
         using var playwright = await Playwright.CreateAsync();
         ct.ThrowIfCancellationRequested();
+        var userWindow = visible ? 0 : BrowserWindows.UserWindow();
         await using var browser = await LaunchAsync(playwright, visible);
         var context = await browser.NewContextAsync(new() { AcceptDownloads = true });
         var done = new TaskCompletionSource<Hit?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -113,6 +114,10 @@ public sealed class BrowserCapture(PlaywrightTools tools)
         Watch(first);
         await windows.KeepHiddenAsync(first);
         lock (_lock) _open = windows;
+        if (!visible) BrowserWindows.GiveFocusBack(userWindow); // a hidden browser never keeps the focus it took starting
+        // Picking the hidden browser on the taskbar (or with Alt+Tab) brings it on screen; nothing else does by itself.
+        if (!visible && await BrowserProcessIdAsync(browser) is { } browserPid)
+            _ = windows.ShowWhenPickedAsync(browserPid, done.Task);
         var userAgent = await first.EvaluateAsync<string>("() => navigator.userAgent");
         // Not awaited: a host page can keep loading forever, and the user may navigate away before it finishes.
         _ = first.GotoAsync(url).ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
@@ -172,6 +177,33 @@ public sealed class BrowserCapture(PlaywrightTools tools)
     {
         "script", "stylesheet", "image", "font", "media", "texttrack", "manifest", "ping", "eventsource", "websocket",
     };
+
+    /// <summary>The browser's own process (every window of it belongs to that process); null when Chrome won't say.</summary>
+    private static async Task<int?> BrowserProcessIdAsync(IBrowser browser)
+    {
+        try
+        {
+            var cdp = await browser.NewBrowserCDPSessionAsync();
+            try
+            {
+                var info = await cdp.SendAsync("SystemInfo.getProcessInfo");
+                if (info is { } json && json.TryGetProperty("processInfo", out var list))
+                    foreach (var process in list.EnumerateArray())
+                        if (process.TryGetProperty("type", out var type) && type.GetString() == "browser"
+                            && process.TryGetProperty("id", out var id) && id.TryGetInt32(out var pid))
+                            return pid;
+            }
+            finally
+            {
+                try { await cdp.DetachAsync(); } catch (PlaywrightException) { /* closing */ }
+            }
+        }
+        catch (PlaywrightException)
+        {
+            // Not offered: the taskbar doesn't bring it on screen; Show browser and the autopilot still do.
+        }
+        return null;
+    }
 
     private static string HostOf(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : url;
 
