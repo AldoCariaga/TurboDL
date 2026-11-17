@@ -44,6 +44,11 @@ public sealed class AppSettings
     public int DefaultConnections { get; set; } = 8;
     public int MaxConcurrent { get; set; } = 3;
 
+    /// <summary>File hosts' pages solved in hidden browsers at the same time (each is its own browser).</summary>
+    public int MaxSolving { get; set; } = 5;
+
+    public const int MaxSolvingLimit = 10;
+
     /// <summary>Global cap in KB/s across all downloads. 0 = unlimited.</summary>
     public long SpeedLimitKBps { get; set; }
 

@@ -48,6 +48,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         DownloadFolder = settings.DownloadFolder;
         DefaultConnections = _edit.DefaultConnections;
         MaxConcurrent = _edit.MaxConcurrent;
+        MaxSolving = _edit.MaxSolving;
         SpeedLimitEnabled = _edit.SpeedLimitKBps > 0;
         SpeedLimitKBps = _edit.SpeedLimitKBps > 0 ? _edit.SpeedLimitKBps : 2048;
 
@@ -102,6 +103,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] public partial string DownloadFolder { get; set; } = "";
     [ObservableProperty] public partial double? DefaultConnections { get; set; }
     [ObservableProperty] public partial double? MaxConcurrent { get; set; }
+    [ObservableProperty] public partial double? MaxSolving { get; set; }
     [ObservableProperty] public partial bool SpeedLimitEnabled { get; set; }
     [ObservableProperty] public partial double? SpeedLimitKBps { get; set; }
 
@@ -197,6 +199,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _edit.DownloadFolder = string.Equals(folder, SettingsService.DefaultDownloadFolder, StringComparison.OrdinalIgnoreCase) ? "" : folder;
         _edit.DefaultConnections = (int)(DefaultConnections ?? 8);
         _edit.MaxConcurrent = (int)(MaxConcurrent ?? 3);
+        _edit.MaxSolving = (int)(MaxSolving ?? 5);
         _edit.SpeedLimitKBps = SpeedLimitEnabled ? (long)Math.Max(1, SpeedLimitKBps ?? 0) : 0;
 
         _edit.Schedule.StartEnabled = ScheduleStart;

@@ -68,6 +68,9 @@ public sealed partial class DownloadItemViewModel : ObservableObject
     /// <summary>Waiting for the browser, or in it. Set by the manager only.</summary>
     internal BrowserStage Browser { get; private set; }
 
+    /// <summary>The browser solving this download's page (Show browser); null outside it.</summary>
+    internal BrowserView? BrowserView { get; set; }
+
     /// <summary>Cancels the browser step (Pause); null outside it.</summary>
     internal CancellationTokenSource? BrowserCts { get; set; }
 

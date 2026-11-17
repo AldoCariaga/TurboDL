@@ -40,8 +40,11 @@ public sealed class DownloadManager
     private readonly SiteConfigService sites;
     private readonly ILogger<DownloadManager> log;
 
-    /// <summary>One browser window at a time: a batch whose parts all hit a host page asks for them one by one.</summary>
-    private readonly SemaphoreSlim _browserGate = new(1, 1);
+    /// <summary>
+    /// How many host pages are solved at once (Settings: Pages solved at once), each in its own browser; a batch whose
+    /// parts all hit a host page goes through them that many at a time, in order.
+    /// </summary>
+    private readonly SolvingGate _browserGate;
 
     /// <summary>Numbers each wait for the browser, in order.</summary>
     private long _browserTickets;
@@ -56,6 +59,8 @@ public sealed class DownloadManager
         VideoToolsService videoTools, BrowserCapture browser, SiteConfigService sites, SettingsService settings,
         ILogger<DownloadManager> log)
     {
+        _browserGate = new SolvingGate(settings.Current.MaxSolving);
+        settings.Changed += s => _browserGate.Limit = s.MaxSolving;
         this.sites = sites;
         this.http = http;
         this.globalLimiter = globalLimiter;
@@ -198,9 +203,9 @@ public sealed class DownloadManager
 
     /// <summary>
     /// Opens the download's link in a visible browser for the user to click through. When the page starts the file, the
-    /// download switches to that direct link with the browser's session and starts again. One browser at a time; the rest
-    /// wait their turn. Called from the row's menu (<paramref name="userAsked"/>), and on its own when a host answers with
-    /// a web page or refuses a link that must give a file. Closing the browser without a download skips the other parts
+    /// download switches to that direct link with the browser's session and starts again. Up to Pages solved at once
+    /// browsers run together (<see cref="SolvingGate"/>); the rest wait their turn, in order. Called from the row's menu
+    /// (<paramref name="userAsked"/>), and on its own when a host answers with a web page or refuses a link that must give a file. Closing the browser without a download skips the other parts
     /// of that batch already waiting for it. While waiting and in the browser the download holds its "downloads at once"
     /// slot, and Pause stops it.
     /// </summary>
@@ -210,14 +215,15 @@ public sealed class DownloadManager
     /// <summary>Show browser: brings the hidden browser solving this download's page on screen.</summary>
     public async Task ShowBrowserAsync(DownloadItemViewModel item)
     {
-        if (item.Browser != BrowserStage.Open)
+        if (item.Browser != BrowserStage.Open || item.BrowserView is not { } view)
         {
-            if (item.InBrowser) item.AddLog("Not in the browser yet: pages are solved one at a time, and this one is next in line.");
+            if (item.InBrowser)
+                item.AddLog($"Not in the browser yet: {_browserGate.Limit} pages are solved at once, and this one waits its turn.");
             return;
         }
         try
         {
-            await browser.ShowAsync();
+            await view.ShowAsync();
         }
         catch (Exception ex)
         {
@@ -267,8 +273,9 @@ public sealed class DownloadManager
                 // Shown from the start only when the user asked for the browser; otherwise hidden until it needs them.
                 // The host's page, not a direct link an earlier browser found (that one has expired, or wasn't the file).
                 var pageUrl = item.Info.PageUrl ?? item.Info.Url;
+                item.BrowserView = new BrowserView();
                 var session = await browser.CaptureAsync(pageUrl, status: new Progress<string>(item.AddLog), ct: ct,
-                    visible: userAsked, site: SiteFor(pageUrl));
+                    visible: userAsked, site: SiteFor(pageUrl), view: item.BrowserView);
                 if (session is null)
                 {
                     failure = "The browser was closed before a download started.";
@@ -312,6 +319,7 @@ public sealed class DownloadManager
         {
             item.BrowserCts?.Dispose();
             item.BrowserCts = null;
+            item.BrowserView = null;
             item.SetBrowser(BrowserStage.None);
         }
 

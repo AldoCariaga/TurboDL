@@ -72,6 +72,19 @@
                 </Border>
                 <Border Style="{StaticResource SettingRow}">
                     <DockPanel>
+                        <ui:NumberBox DockPanel.Dock="Right" Value="{Binding MaxSolving, UpdateSourceTrigger=PropertyChanged}"
+                                      Minimum="1" Maximum="10" SmallChange="1" MaxDecimalPlaces="0" Width="132"
+                                      ClearButtonEnabled="False" VerticalAlignment="Center"
+                                      AutomationProperties.Name="Pages solved at once" />
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                            <TextBlock Text="Pages solved at once" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="File host pages clicked through in hidden browsers at the same time. Lower it if a host answers with &quot;too many requests&quot;."
+                                       Style="{StaticResource SettingHelp}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+                <Border Style="{StaticResource SettingRow}">
+                    <DockPanel>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                             <ui:NumberBox Value="{Binding SpeedLimitKBps, UpdateSourceTrigger=PropertyChanged}" Minimum="1"
                                           Maximum="10000000" SmallChange="256" LargeChange="1024" MaxDecimalPlaces="0" Width="150"

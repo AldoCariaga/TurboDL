@@ -48,6 +48,7 @@ public sealed class SettingsStore(string? path = null)
     {
         s.DefaultConnections = Math.Clamp(s.DefaultConnections, 1, 32);
         s.MaxConcurrent = Math.Clamp(s.MaxConcurrent, 1, 20);
+        s.MaxSolving = Math.Clamp(s.MaxSolving, 1, AppSettings.MaxSolvingLimit);
         s.SpeedLimitKBps = Math.Max(0, s.SpeedLimitKBps);
         s.MinCatchSizeKB = Math.Max(0, s.MinCatchSizeKB);
         s.Categories ??= [];

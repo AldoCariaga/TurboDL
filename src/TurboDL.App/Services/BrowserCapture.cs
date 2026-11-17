@@ -22,29 +22,19 @@ public sealed record CapturedSession(string Url, string UserAgent, string Refere
 /// steps (<see cref="SiteStepRunner"/>); any other gets the general autopilot (<see cref="GenericAutopilot"/>), which
 /// waits out countdowns and clicks the download button it finds by its text. Ad pop-ups are closed, and CAPTCHAs and
 /// sign-ins are left to the user. The window starts off-screen and comes on screen only when the user is needed: a CAPTCHA, a
-/// page that stops moving on, the user picking it on the taskbar, or <see cref="ShowAsync"/> (the row's Show browser). As
-/// soon as the host sends the file (a browser download, or any response marked as an attachment), the link, cookies, user
-/// agent and referring page are taken and the browser is closed; TurboDL then downloads the file itself. One browser at a
-/// time (the caller sees to it). Playwright's driver comes from <see cref="PlaywrightTools"/>.
+/// page that stops moving on, the user picking it on the taskbar, or <see cref="BrowserView.ShowAsync"/> (the row's Show
+/// browser). As soon as the host sends the file (a browser download, or any response marked as an attachment), the link,
+/// cookies, user agent and referring page are taken and the browser is closed; TurboDL then downloads the file itself.
+/// Each capture is its own browser, so several can run at once (the caller decides how many). Playwright's driver comes
+/// from <see cref="PlaywrightTools"/>.
 /// </summary>
 public sealed class BrowserCapture(PlaywrightTools tools)
 {
     /// <summary>How long a pop-up gets to turn out to be the file, or the host's own page, before it's closed as an ad.</summary>
     private static readonly TimeSpan PopupGrace = TimeSpan.FromSeconds(3);
 
-    private readonly Lock _lock = new();
-    private BrowserWindows? _open;
-
     /// <summary>True until the browser helper has been downloaded.</summary>
     public bool NeedsSetup => !tools.IsInstalled;
-
-    /// <summary>Brings the open browser on screen, if there is one and it's hidden (the row's Show browser).</summary>
-    public Task ShowAsync()
-    {
-        BrowserWindows? open;
-        lock (_lock) open = _open;
-        return open?.ShowAllAsync("Showing the browser.") ?? Task.CompletedTask;
-    }
 
     /// <summary>Where the file was found, and the page it came from.</summary>
     private sealed record Hit(string Url, IPage? Page, IDownload? Download, string? Referer);
@@ -55,9 +45,11 @@ public sealed class BrowserCapture(PlaywrightTools tools)
     /// <paramref name="status"/> hears what the page is doing (each change once), for the download's log.
     /// Cancelling <paramref name="ct"/> (Pause) closes the browser and throws OperationCanceledException.
     /// <paramref name="site"/> is the link's host's config; null (no config) uses the general autopilot.
+    /// <paramref name="view"/> is how the caller brings this browser on screen (Show browser) while it's open.
     /// </summary>
     public async Task<CapturedSession?> CaptureAsync(string url, IProgress<ToolSetupProgress>? setup = null,
-        IProgress<string>? status = null, CancellationToken ct = default, bool visible = false, SiteConfig? site = null)
+        IProgress<string>? status = null, CancellationToken ct = default, bool visible = false, SiteConfig? site = null,
+        BrowserView? view = null)
     {
         await tools.EnsureAsync(setup, ct);
         Environment.SetEnvironmentVariable("PLAYWRIGHT_DRIVER_SEARCH_PATH", tools.Directory);
@@ -113,7 +105,7 @@ public sealed class BrowserCapture(PlaywrightTools tools)
         var first = await context.NewPageAsync();
         Watch(first);
         await windows.KeepHiddenAsync(first);
-        lock (_lock) _open = windows;
+        view?.Attach(windows);
         if (!visible) BrowserWindows.GiveFocusBack(userWindow); // a hidden browser never keeps the focus it took starting
         // Picking the hidden browser on the taskbar (or with Alt+Tab) brings it on screen; nothing else does by itself.
         if (!visible && await BrowserProcessIdAsync(browser) is { } browserPid)
@@ -142,7 +134,7 @@ public sealed class BrowserCapture(PlaywrightTools tools)
         }
         finally
         {
-            lock (_lock) _open = null;
+            view?.Attach(null);
             try { await browser.CloseAsync(); }
             catch (PlaywrightException) { /* the user closed it already */ }
             try { await autopilot; }
@@ -246,4 +238,15 @@ public sealed class BrowserCapture(PlaywrightTools tools)
             return await playwright.Chromium.LaunchAsync(new() { Headless = false, Channel = "msedge", Args = args });
         }
     }
+}
+
+/// <summary>The row's handle on the browser solving its page: Show browser brings it on screen while it's open.</summary>
+public sealed class BrowserView
+{
+    private BrowserWindows? _windows;
+
+    internal void Attach(BrowserWindows? windows) => Volatile.Write(ref _windows, windows);
+
+    /// <summary>Brings this browser on screen, if it's open and hidden.</summary>
+    public Task ShowAsync() => Volatile.Read(ref _windows)?.ShowAllAsync("Showing the browser.") ?? Task.CompletedTask;
 }

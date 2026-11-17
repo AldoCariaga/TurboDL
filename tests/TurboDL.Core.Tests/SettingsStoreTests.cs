@@ -15,6 +15,7 @@ public class SettingsStoreTests : IDisposable
     {
         var s = new SettingsStore(PathIn).Load();
         Assert.Equal(3, s.MaxConcurrent);
+        Assert.Equal(5, s.MaxSolving);
         Assert.Contains(s.Categories, c => c.Name == "Video");
     }
 
@@ -22,7 +23,7 @@ public class SettingsStoreTests : IDisposable
     public void Round_trips_and_clamps()
     {
         var store = new SettingsStore(PathIn);
-        var s = new AppSettings { MaxConcurrent = 99, SpeedLimitKBps = 512, Theme = ThemeMode.Dark };
+        var s = new AppSettings { MaxConcurrent = 99, MaxSolving = 0, SpeedLimitKBps = 512, Theme = ThemeMode.Dark };
         s.Schedule.StartEnabled = true;
         s.Schedule.StartAt = new TimeOnly(1, 30);
         s.Schedule.Days = [DayOfWeek.Friday];
@@ -30,6 +31,7 @@ public class SettingsStoreTests : IDisposable
 
         var back = store.Load();
         Assert.Equal(20, back.MaxConcurrent);
+        Assert.Equal(1, back.MaxSolving);
         Assert.Equal(512, back.SpeedLimitKBps);
         Assert.Equal(ThemeMode.Dark, back.Theme);
         Assert.Equal(new TimeOnly(1, 30), back.Schedule.StartAt);
