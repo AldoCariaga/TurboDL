@@ -4,6 +4,8 @@
   // form to /download in the same tab, which starts the file as a browser download. No CAPTCHA was shown, but the page
   // can ask for one (data-has-captcha), so the captcha step waits for the user when there is one.
   // The click sometimes sends the tab to an ad instead: offSiteRedirects brings it back and the steps start again.
+  // Or an ad script takes it and only opens a pop-up, so the form is never posted: retryIfIgnoredSeconds clicks again
+  // when the page sends nothing within 4 s, instead of sitting out the 20 s wait for a file that isn't coming.
   "id": "filekeeper",
   "name": "FileKeeper",
   "hosts": ["filekeeper.net"],
@@ -11,7 +13,7 @@
   "steps": [
     { "action": "waitFor", "selector": "#download-button", "state": "visible", "timeoutSeconds": 120 },
     { "action": "captcha", "timeoutSeconds": 300 },
-    { "action": "click", "selector": "#download-button", "timeoutSeconds": 30 },
+    { "action": "click", "selector": "#download-button", "timeoutSeconds": 30, "retryIfIgnoredSeconds": 4 },
     // Time for the download to start before anything else touches the page (the general autopilot would click again).
     // A trip to an ad cuts it short.
     { "action": "wait", "seconds": 20 }

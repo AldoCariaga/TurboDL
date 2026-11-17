@@ -128,8 +128,22 @@ public sealed class SiteConfigTests : IDisposable
     [InlineData("""[{ "action": "click", "selector": "#go", "timeoutSeconds": 601 }]""", "between 1 and 600")]
     [InlineData("""[{ "action": "click", "selector": "#go", "seconds": 3 }]""", "doesn't take \"seconds\"")]
     [InlineData("""[{ "action": "click", "selector": "#go", "timeoutSeconds": "ten" }]""", "wrong kind of value")]
+    [InlineData("""[{ "action": "waitFor", "selector": "#go", "retryIfIgnoredSeconds": 4 }]""", "only click does")]
+    [InlineData("""[{ "action": "wait", "seconds": 1, "retryIfIgnoredSeconds": 4 }]""", "only click does")]
+    [InlineData("""[{ "action": "click", "selector": "#go", "retryIfIgnoredSeconds": 0 }]""", "between 1 and 60")]
+    [InlineData("""[{ "action": "click", "selector": "#go", "retryIfIgnoredSeconds": 61 }]""", "between 1 and 60")]
     public void Parse_BadSteps_AreRefused(string steps, string expected) =>
         Assert.Contains(expected, Problem(Minimal(steps)));
+
+    [Fact]
+    public void Parse_ClickRetryIfIgnored_IsKept_AndOffByDefault()
+    {
+        var on = SiteConfigLoader.Parse(Minimal("""[{ "action": "click", "selector": "#go", "retryIfIgnoredSeconds": 4.5 }]"""), SiteSource.User, "t").Config!;
+        var off = SiteConfigLoader.Parse(Minimal(), SiteSource.User, "t").Config!;
+
+        Assert.Equal(4.5, Assert.Single(on.Steps).RetryIfIgnoredSeconds);
+        Assert.Equal(0, Assert.Single(off.Steps).RetryIfIgnoredSeconds);
+    }
 
     [Theory]
     [InlineData("https://cdn.files.example/x.rar", true)]
@@ -178,6 +192,8 @@ public sealed class SiteConfigTests : IDisposable
         Assert.Equal(OffSiteHandling.GoBack, fileKeeper.OffSiteRedirects); // its download button can send the tab to ads
         Assert.True(fileKeeper.IsFileHost("https://edge01.fetchio.cc/f/abc"));
         Assert.False(fileKeeper.IsFileHost("https://googleads.g.doubleclick.net/pagead/ads")); // an ad script once taken for part01
+        // An ad can take the click and only open a pop-up: the button is clicked again instead of waiting 20 s for nothing.
+        Assert.True(Assert.Single(fileKeeper.Steps, s => s.Action == SiteAction.Click).RetryIfIgnoredSeconds > 0);
         Assert.Empty(catalog.Problems);
     }
 

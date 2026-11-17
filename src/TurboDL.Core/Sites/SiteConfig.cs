@@ -72,9 +72,11 @@ public enum SiteSource
 /// <summary>
 /// One step of a site config. <see cref="Selector"/> is a CSS or Playwright selector (WaitFor, Countdown, Click);
 /// <see cref="Seconds"/> is the pause of a Wait step. A step that isn't <see cref="Optional"/> and doesn't finish within
-/// <see cref="TimeoutSeconds"/> ends the config's steps.
+/// <see cref="TimeoutSeconds"/> ends the config's steps. <see cref="RetryIfIgnoredSeconds"/> (Click only, 0: off) clicks
+/// again when the page sends nothing (no navigation, no form post) that long after the click: an ad took it.
 /// </summary>
-public sealed record SiteStep(SiteAction Action, string? Selector, WaitState State, int TimeoutSeconds, double Seconds, bool Optional)
+public sealed record SiteStep(SiteAction Action, string? Selector, WaitState State, int TimeoutSeconds, double Seconds, bool Optional,
+    double RetryIfIgnoredSeconds = 0)
 {
     /// <summary>The step for a status line: <c>clicking "#download"</c>, <c>waiting 2 s</c>.</summary>
     public string Describe() => Action switch

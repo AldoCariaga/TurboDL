@@ -16,7 +16,7 @@ namespace TurboDL.Core.Sites;
 ///     { "action": "waitFor", "selector": "#go", "state": "visible", "timeoutSeconds": 60 },
 ///     { "action": "countdown", "selector": "#timer", "timeoutSeconds": 180 },
 ///     { "action": "captcha" },
-///     { "action": "click", "selector": "#go", "optional": false },
+///     { "action": "click", "selector": "#go", "optional": false, "retryIfIgnoredSeconds": 4 },
 ///     { "action": "wait", "seconds": 2 }
 ///   ],
 ///   "capture": { "urlPattern": null, "requireAttachment": true, "fileHosts": ["cdn.example.net"] },
@@ -29,6 +29,7 @@ public static class SiteConfigLoader
 {
     public const int DefaultTimeoutSeconds = 60;
     public const int MaxSeconds = 600;
+    public const int MaxRetryIfIgnoredSeconds = 60;
 
     /// <summary>A bigger file isn't a site config.</summary>
     private const long MaxFileBytes = 256 * 1024;
@@ -259,7 +260,17 @@ public static class SiteConfigLoader
         if (timeout is < 1 or > MaxSeconds)
             throw new InvalidConfigException($"{at}: \"timeoutSeconds\" has to be between 1 and {MaxSeconds}.");
 
-        return new SiteStep(action, needsSelector ? selector : null, state, timeout, seconds, raw.Optional ?? false);
+        double retry = 0;
+        if (raw.RetryIfIgnoredSeconds is { } retrySeconds)
+        {
+            if (action != SiteAction.Click)
+                throw new InvalidConfigException($"{at} ({Name(action)}) doesn't take \"retryIfIgnoredSeconds\"; only click does.");
+            if (retrySeconds is < 1 or > MaxRetryIfIgnoredSeconds)
+                throw new InvalidConfigException($"{at} (click): \"retryIfIgnoredSeconds\" has to be between 1 and {MaxRetryIfIgnoredSeconds}.");
+            retry = retrySeconds;
+        }
+
+        return new SiteStep(action, needsSelector ? selector : null, state, timeout, seconds, raw.Optional ?? false, retry);
     }
 
     private static string Name(SiteAction action) => JsonNamingPolicy.CamelCase.ConvertName(action.ToString());
@@ -298,6 +309,7 @@ public static class SiteConfigLoader
         public int? TimeoutSeconds { get; set; }
         public double? Seconds { get; set; }
         public bool? Optional { get; set; }
+        public double? RetryIfIgnoredSeconds { get; set; }
     }
 
     private sealed class CaptureJson

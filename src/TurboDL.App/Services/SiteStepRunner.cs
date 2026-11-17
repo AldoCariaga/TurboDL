@@ -119,6 +119,7 @@ internal static class SiteStepRunner
                         return true;
 
                     case SiteAction.Click:
+                        if (step.RetryIfIgnoredSeconds > 0) return await ClickUntilHeardAsync(site, step, page, finished, report, deadline, limit);
                         // A real mouse click; Playwright waits until the element is visible, enabled and still.
                         await page.Locator(step.Selector!).First.ClickAsync(new() { Timeout = Milliseconds(left) });
                         return true;
@@ -145,6 +146,59 @@ internal static class SiteStepRunner
             await Task.WhenAny(finished, Task.Delay(Poll));
         }
         return finished.IsCompleted;
+    }
+
+    /// <summary>How many more clicks a click step with <see cref="SiteStep.RetryIfIgnoredSeconds"/> makes when the page sends nothing.</summary>
+    private const int MaxClickRetries = 3;
+
+    /// <summary>
+    /// Clicks, then waits <see cref="SiteStep.RetryIfIgnoredSeconds"/> for the page to send something that a real click on
+    /// the button sends: a navigation or a form post (not a GET for a page's part). Nothing means an ad script took the
+    /// click (it opens a pop-up instead), so the button is clicked again, a few times at most; then the step counts as done
+    /// and the steps go on as they would. Throws like a plain click (a timeout, a page that navigates or closes).
+    /// </summary>
+    private static async Task<bool> ClickUntilHeardAsync(SiteConfig site, SiteStep step, IPage page, Task finished,
+        StatusReporter report, Stopwatch deadline, TimeSpan limit)
+    {
+        var heard = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // An ad's frame loading, or a page's analytics beacon, isn't the button doing its work.
+        void OnRequest(object? sender, IRequest request)
+        {
+            try
+            {
+                if (request.IsNavigationRequest ? request.Frame == page.MainFrame
+                        : !string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase)
+                          && request.ResourceType is not "ping"
+                          && Uri.TryCreate(request.Url, UriKind.Absolute, out var uri) && site.MatchLength(uri.IdnHost) >= 0)
+                    heard.TrySetResult();
+            }
+            catch (PlaywrightException)
+            {
+                // From a worker (no frame): not the button.
+            }
+        }
+
+        page.Request += OnRequest;
+        try
+        {
+            for (var retries = 0; ; retries++)
+            {
+                var left = limit - deadline.Elapsed;
+                await page.Locator(step.Selector!).First.ClickAsync(new() { Timeout = Milliseconds(left) });
+                await Task.WhenAny(finished, heard.Task, Task.Delay(TimeSpan.FromSeconds(step.RetryIfIgnoredSeconds)));
+                if (finished.IsCompleted || heard.Task.IsCompleted || page.IsClosed) return true;
+                if (retries == MaxClickRetries || deadline.Elapsed >= limit)
+                {
+                    report.Say($"Site config {site.Name}: the page still sent nothing after the click; carrying on.");
+                    return true;
+                }
+                report.Say($"Site config {site.Name}: the click didn't reach the page (most likely an ad took it); clicking again ({retries + 1} of {MaxClickRetries}).");
+            }
+        }
+        finally
+        {
+            page.Request -= OnRequest;
+        }
     }
 
     /// <summary>The countdown is over when its element is gone or hidden, or the number it shows is 0 (or it shows none).</summary>
